@@ -352,3 +352,6 @@ body.stage main.wrap{max-width:none}
 .majlis-card .mc-ic{font-size:30px}
 .majlis-card b{display:block}
 .small.due{color:var(--hint);font-weight:600}
+.foot{text-align:center;font-size:12px;color:var(--muted);padding-block:18px 6px}
+.foot a{color:var(--muted)}
+body.stage .foot{display:none}

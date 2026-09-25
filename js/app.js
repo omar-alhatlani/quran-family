@@ -1092,7 +1092,7 @@ async function viewJoinLanding(jc){
     ${iosHint()}
     <button class="btn primary big" id="joinNow" type="button">انضمّ إلى الحلقة</button>
     <div id="famErr" class="warn" hidden></div>
-    <p class="small" style="text-align:center;margin-top:18px"><button class="linkbtn" id="notMine" type="button">ليست عائلتي</button></p>`;
+    <p class="small" style="text-align:center;margin-top:18px"><button class="linkbtn" id="notMine" type="button">ليست عائلتي</button> · <a href="privacy.html">كيف نحفظ بياناتكم؟</a></p>`;
   $('#joinNow').onclick = async () => {
     $('#joinNow').disabled = true;
     try { await Cloud.joinFamily(info.jc); clearQuery(); route(); }
@@ -1123,7 +1123,8 @@ function viewInviteLanding(inv){
         <div style="margin-top:12px"><button class="btn primary big" type="submit">أنشئ الحلقة</button></div>
       </form>`
       : '<button class="btn primary big" id="invG" type="button">الدخول بحساب Google</button>'}
-    <div id="famErr" class="warn" hidden></div>`;
+    <div id="famErr" class="warn" hidden></div>
+    <p class="small" style="text-align:center;margin-top:14px">بياناتكم لعائلتكم وحدها، وتُحفظ في الدمام. <a href="privacy.html">صفحة الخصوصية</a></p>`;
   const err = e => { const b = $('#famErr'); b.textContent = errText(e); b.hidden = false; };
   if ($('#invG')) $('#invG').onclick = () => Cloud.googleSignIn().catch(err);
   if ($('#invOut')) $('#invOut').onclick = async () => { await Cloud.signOut(); Cloud.googleSignIn().catch(err); };

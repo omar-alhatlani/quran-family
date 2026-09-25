@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5f55">
+<title>خصوصية حلقة البيت</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap">
+<style>
+:root{color-scheme:light;--bg:#eef2f1;--surface:#fff;--ink:#18282a;--muted:#5d6f70;--line:#d5dfdd;--accent:#0f5f55;--soft:#d6ebe7}
+@media (prefers-color-scheme: dark){:root{color-scheme:dark;--bg:#0f1716;--surface:#172221;--ink:#e4ecea;--muted:#93a5a3;--line:#2a3937;--accent:#46b8a3;--soft:#1d3a35}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;font-size:16px;line-height:1.85;
+  padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(32px + env(safe-area-inset-bottom,0px))}
+main{max-width:720px;margin-inline:auto}
+header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+header img{width:44px;height:44px;border-radius:10px}
+h1{font-size:26px;margin:0}
+.upd{color:var(--muted);font-size:14px;margin:0 0 18px}
+.lead{background:var(--soft);border-radius:14px;padding:14px 16px;margin-bottom:18px}
+section{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px 18px 12px;margin-block:12px}
+h2{font-size:18px;margin:12px 0 4px;color:var(--accent)}
+ul{padding-inline-start:20px;margin:6px 0}
+li{margin-block:4px}
+.no li::marker{content:'✗  ';color:#b3261e}
+.yes li::marker{content:'✓  ';color:var(--accent)}
+a{color:var(--accent)}
+.back{display:inline-block;margin-top:16px}
+</style>
+</head>
+<body>
+<main>
+  <header><img src="icons/icon-192.png" alt=""><h1>الخصوصية في حلقة البيت</h1></header>
+  <p class="upd">آخر تحديث: ٢٦ سبتمبر ٢٠٢٦</p>
+  <p class="lead">حلقة البيت برنامج عائلي لحفظ القرآن الكريم ومراجعته، يُستعمل بدعوة. كثير من مستخدميه أطفال، لذلك نجمع أقلّ ما يلزم ليعمل البرنامج، ولا نبيع شيئًا ولا نعرض إعلانات.</p>
+
+  <section>
+    <h2>ما الذي نحفظه</h2>
+    <ul class="yes">
+      <li><b>الاسم الذي يكتبه كل فرد</b> ولونه في البرنامج. لا نطلب اسمًا كاملًا ولا عمرًا.</li>
+      <li><b>بيانات الحفظ:</b> ما يحفظه كل فرد من المصحف، ونتائج التسميع (نسبة الصحيح ومواضع الأخطاء)، والأهداف، وسجلّ الجلسات.</li>
+      <li><b>بريد وليّ الأمر في Google</b> حين يدخل به لإنشاء الحلقة، وبريد من يختار ربط ملفّه بحساب Google.</li>
+      <li><b>معرّف مجهول لكل جهاز</b> يربطه بملفّ صاحبه، دون بريد أو رقم جوال.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>ما الذي لا نحفظه</h2>
+    <ul class="no">
+      <li><b>لا نسجّل الصوت ولا نحفظه.</b> التعرّف على التلاوة تقوم به خدمة الإملاء الصوتي في متصفّح الجوال (من Apple في الآيفون، ومن Google في أندرويد)، ولا يصل إلى البرنامج إلا النصّ الذي تعرّفت عليه.</li>
+      <li>لا نجمع الموقع، ولا جهات الاتصال، ولا الصور، ولا رقم الجوال.</li>
+      <li>لا إعلانات، ولا تتبّع، ولا مشاركة للبيانات مع أي جهة لأغراض تجارية.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>أين تُحفظ البيانات</h2>
+    <ul>
+      <li>في خدمة <b>Firebase من Google</b>، في مركز بيانات <b>الدمام (المملكة العربية السعودية)</b>.</li>
+      <li>ونسخة عمل على جهازك نفسه ليعمل البرنامج بسرعة وبلا اتصال أحيانًا.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>من يرى البيانات</h2>
+    <ul>
+      <li><b>أفراد حلقتك فقط:</b> يرى كلٌّ منهم محفوظ الآخرين وتقدّمهم للاطّلاع والتشجيع. ولا يعدّل ملفّ أحد إلا صاحبه أو وليّ أمر الحلقة.</li>
+      <li><b>لا ترى أي عائلة بيانات عائلة أخرى.</b> هذا مفروض في قواعد حماية قاعدة البيانات نفسها.</li>
+      <li><b>مدير البرنامج</b> يرى أرقامًا مجمّعة فقط (عدد العائلات والأفراد، ومجموع ما حُفظ وسُمِّع)، دون أسماء أو تفاصيل.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>الأطفال</h2>
+    <ul>
+      <li>وليّ الأمر هو من ينشئ حلقة العائلة ويدعو أفرادها، ويدير ملفّاتهم: يعدّل، ويحذف، ويسمح بنقل الملف إلى جوال جديد.</li>
+      <li>يدخل الطفل برمز العائلة دون بريد أو كلمة مرور.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>خدمات خارجية</h2>
+    <ul>
+      <li><b>Google Firebase:</b> الدخول وقاعدة البيانات.</li>
+      <li><b>Google Fonts:</b> الخطوط.</li>
+      <li><b>everyayah.com:</b> ملفّات التلاوة الصوتية حين تضغط «استمع».</li>
+      <li><b>GitHub Pages:</b> استضافة صفحات البرنامج.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>الحذف والتواصل</h2>
+    <ul>
+      <li><b>حذف فرد:</b> يحذفه وليّ أمر الحلقة من ملفّه («حذف ملف …»).</li>
+      <li><b>حذف الحلقة كاملة</b> أو أي سؤال عن البيانات: تواصل مع مدير البرنامج على <a href="mailto:o.alhatlani@gmail.com">o.alhatlani@gmail.com</a>.</li>
+      <li>إن غيّرنا هذه الصفحة تغييرًا جوهريًّا حدّثنا تاريخها في أعلاها.</li>
+    </ul>
+  </section>
+
+  <a class="back" href="./">← العودة إلى حلقة البيت</a>
+</main>
+</body>
+</html>
