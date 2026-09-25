@@ -98,5 +98,44 @@ const Stats = (() => {
       .map(x => { const i = ayahOfWord(x.g); return {...x, i, word: Q.uth[i].split('\t')[x.g - Q.wOff[i]]}; });
   }
 
-  return {memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
+  /* ---------- الأهداف: الأسبوع من السبت إلى الجمعة ---------- */
+  const weekStart = d => d - ((d + 5) % 7);   // اليوم ٠ (١ يناير ١٩٧٠) خميس
+  // تقدّم الأسبوع من بيانات هذا الجهاز: حفظ جديد (أوجه/آيات) ومراجعة (أوجه)
+  function week(id, w = weekStart(Store.today())){
+    const d = Store.data(id); let np = 0, na = 0, rp = 0;
+    Object.entries(d.nl || {}).forEach(([k, v]) => { if (+k >= w && +k < w + 7){ np += v[0]; na += v[1]; } });
+    d.sess.forEach(s => { const sd = Store.dayOf(s.t); if (s.kind === 'review' && sd >= w && sd < w + 7) rp += s.pages || 0; });
+    return {w, np: Math.max(0, +np.toFixed(2)), na: Math.max(0, na), rp: +rp.toFixed(2)};
+  }
+  // تقدّم فرد لا يملك هذا الجهاز بياناته كاملة: ما رفعه جهازه
+  function weekShared(id, local){
+    const w = weekStart(Store.today()), p = Store.data(id).prog;
+    return local ? week(id, w) : p && p.w === w ? p : {w, np: 0, na: 0, rp: 0};
+  }
+  function goalStatus(id, prog){
+    const g = Store.data(id).goal; if (!g) return null;
+    const mem = memorized(id);
+    const newT = +g.n || 0, newD = g.nu === 'ayah' ? prog.na : prog.np;
+    const revT = g.rc ? Math.max(1, Math.round(mem.pages / g.rc * 2) / 2) : 0;
+    const revD = prog.rp;
+    const daysLeft = prog.w + 7 - Store.today();
+    return {newT, newD, revT, revD, unit: g.nu, days: g.dy, daysLeft, rc: g.rc,
+            newOk: !newT || newD >= newT, revOk: !revT || revD >= revT,
+            met: (!newT || newD >= newT) && (!revT || revD >= revT) && (newT || revT)};
+  }
+  // الهدف الكبير: حفظ مدى (جزء أو سورة) قبل تاريخ؛ المتوقّع خطّيًّا من يوم وضعه
+  function bigStatus(id){
+    const g = Store.data(id).goal, big = g && g.big; if (!big) return null;
+    const m = Store.mem(id); let tw = 0, mw = 0, tp = 0;
+    for (let i = big.a; i <= big.b; i++){ tw += Q.words[i]; tp += Q.words[i] / Q.pageWords[Q.page[i]]; if (m[i]) mw += Q.words[i]; }
+    const frac = tw ? mw / tw : 0, t = Store.today();
+    const span = Math.max(1, big.due - big.since), k = Math.min(1, Math.max(0, (t - big.since) / span));
+    const expected = big.f0 + (1 - big.f0) * k;
+    const behind = (expected - frac) * tp;                  // بالأوجه؛ سالب = متقدّم
+    const weeksLeft = Math.max(1, (big.due - t) / 7);
+    return {label: big.label, frac, pages: tp, behind, done: frac >= 1, overdue: t > big.due && frac < 1,
+            perWeek: (1 - frac) * tp / weeksLeft, due: big.due};
+  }
+
+  return {weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
 })();

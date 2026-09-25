@@ -127,7 +127,8 @@ const Cloud = (() => {
   }
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
-    return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now()};
+    return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now(),
+            goal: d.goal || null, nl: d.nl || {}, prog: Stats.week(id)};
   }
 
   /* ---------- رفع التعديلات ---------- */
@@ -148,6 +149,8 @@ const Cloud = (() => {
   async function pushPub(id, initialSessions){
     const m = Stats.memorized(id);
     const doc = {fid: st.fid, mem: {l: m.letters, w: m.words, a: m.ayat, p: +m.pages.toFixed(3), j: +m.juz.toFixed(3)}, up: Date.now()};
+    const prog = Stats.week(id), gs = Stats.goalStatus(id, prog);
+    doc.goal = gs ? {w: prog.w, met: !!gs.met} : null;   // للوحة: هل حقّق هدف الأسبوع؟
     if (initialSessions){
       const t = {s: 0, w: 0, l: 0, p: 0};
       initialSessions.forEach(s => { t.s++; t.w += s.words || 0; t.l += s.letters || 0; t.p += s.pages || 0; });

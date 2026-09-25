@@ -193,3 +193,16 @@ details summary{cursor:pointer;font-weight:600}
 .codein{width:9em!important;text-transform:uppercase;letter-spacing:2px}
 .claim{font-size:15px}
 .addf{max-width:420px}
+
+/* الأهداف */
+.goal .gl{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:14px}
+.goal .gl b{font-variant-numeric:tabular-nums}
+.goal .qbar{margin-top:4px}
+.qbar.okb i{background:var(--fresh)}
+.goal.met{border-color:var(--fresh)}
+.metmsg{color:var(--fresh);font-weight:600;margin:10px 0 0}
+.big-goal{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.behind{color:var(--weak)} .ahead{color:var(--fresh)}
+.gline{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.gline.ok{color:var(--fresh);font-weight:600}
+input[type=number],input[type=date]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}

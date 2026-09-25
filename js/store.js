@@ -4,7 +4,10 @@
    rev:  آخر تسميع لكل آية {فهرس: [اليوم، عدد الأخطاء]}
    sess: سجلّ جلسات التسميع (لكل جلسة id)
    mis:  مواضع الأخطاء {رقم الكلمة في المصحف: عدد مرات الخطأ}
-   up:   وقت آخر تعديل (للمقارنة مع نسخة السحابة) */
+   up:   وقت آخر تعديل (للمقارنة مع نسخة السحابة)
+   goal: الهدف {n: مقدار الحفظ الأسبوعي، nu: 'page'|'ayah'، dy: أيام الحفظ، rc: دورة المراجعة بالأسابيع، big، since}
+   nl:   سجلّ الحفظ الجديد {اليوم: [أوجه، آيات]} (يُسجَّل بعد وضع الهدف فقط)
+   prog: تقدّم الأسبوع كما حسبه جهاز صاحبه (يقرؤه الآخرون) */
 const Store = (() => {
   const KEY = 'qf1';
   let DB;
@@ -18,12 +21,13 @@ const Store = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(DB)); return true; }
     catch(e){ alert('تعذّر الحفظ على الجهاز. قد تكون الذاكرة ممتلئة أو التصفّح خاصًّا.'); return false; }
   }
-  const today = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 864e5);
+  const dayOf = t => Math.floor((t - new Date(t).getTimezoneOffset() * 60000) / 864e5);
+  const today = () => dayOf(Date.now());
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   // معرّف قديم ← جديد بعد رفع الفرد للسحابة (شاشة مفتوحة بالمعرّف القديم تبقى تكتب في مكانها الصحيح)
   const R = id => { let k = 0; while (DB.alias && DB.alias[id] && k++ < 5) id = DB.alias[id]; return id; };
-  function data(id){ id = R(id); return DB.d[id] || (DB.d[id] = {mem: [], rev: {}, sess: [], mis: {}, up: 0}); }
+  function data(id){ id = R(id); return DB.d[id] || (DB.d[id] = {mem: [], rev: {}, sess: [], mis: {}, up: 0, goal: null, nl: {}}); }
   // تعديل محلّي: يُحفظ ويُبلَّغ للمزامنة
   function touch(id){ id = R(id); data(id).up = Date.now(); save(); hooks.changed(id); }
 
@@ -34,8 +38,20 @@ const Store = (() => {
     data(id).mem.forEach(([a, b]) => m.fill(1, a, b + 1));
     return memCache[id] = m;
   }
+  // الحفظ الجديد يُسجَّل بعد وضع الهدف. الإضافة الكبيرة دفعةً واحدة (أكثر من ٣ أوجه) رسمٌ للخريطة لا حفظ جديد.
+  const BULK_PAGES = 3;
+  function logNew(id, a, b, val){
+    const d = data(id), m = mem(id); if (!d.goal) return;
+    let p = 0, n = 0;
+    for (let i = a; i <= b; i++) if (m[i] !== (val ? 1 : 0)){ p += Q.words[i] / Q.pageWords[Q.page[i]]; n++; }
+    if (!n || p > BULK_PAGES) return;
+    const t = today(), e = (d.nl = d.nl || {})[t] || [0, 0], s = val ? 1 : -1;
+    d.nl[t] = [+(e[0] + s * p).toFixed(3), e[1] + s * n];
+    Object.keys(d.nl).forEach(k => { if (+k < t - 60) delete d.nl[k]; });
+  }
   function setMem(id, a, b, val){
     id = R(id);
+    logNew(id, a, b, val);
     const m = mem(id); m.fill(val ? 1 : 0, a, b + 1);
     const ranges = []; let s = -1;
     for (let i = 0; i <= m.length; i++){
@@ -46,7 +62,7 @@ const Store = (() => {
   }
 
   return {
-    get DB(){ return DB; }, hooks, R, save, today, uid, data, mem, setMem, touch,
+    get DB(){ return DB; }, hooks, R, save, today, dayOf, BULK_PAGES, uid, data, mem, setMem, touch,
     profiles: () => DB.profiles,
     profile: id => DB.profiles.find(p => p.id === R(id)),
     get cur(){ return DB.cur && DB.profiles.find(p => p.id === DB.cur) ? DB.cur : null; },
@@ -63,12 +79,12 @@ const Store = (() => {
       if (DB.cur === oldId) DB.cur = newId; save();
     },
     // نسخة السحابة أحدث: تحلّ محلّ المحلية
-    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up}){
+    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog}){
       let p = DB.profiles.find(x => x.id === id);
       if (!p){ p = {id, name, color, created: Date.now()}; DB.profiles.push(p); }
       p.name = name; p.color = color; p.cloud = true; p.uids = Array.isArray(uids) ? uids : null;
       const d = data(id);
-      if ((up || 0) > (d.up || 0)){ d.mem = ranges; d.rev = rev || {}; d.mis = mis || {}; d.up = up; delete memCache[id]; }
+      if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null}); delete memCache[id]; }
       save();
     },
     // جلسات من السحابة تُدمج بالمعرّف

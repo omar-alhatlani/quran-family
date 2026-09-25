@@ -37,7 +37,7 @@ function route(keepScroll){
   const parts = (location.hash.slice(1) || '/').split('/').filter(Boolean);
   const pid = Store.cur;
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
@@ -48,7 +48,7 @@ function viewProfiles(){
   const ps = Store.profiles(), inFam = !!(Cloud.st.fid && Cloud.st.family);
   const card = p => {
     const m = Stats.memorized(p.id);
-    return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small></span></button>`;
+    return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small>${goalLine(p)}</span></button>`;
   };
   const addForm = (id, label, btn) => `
       <form id="${id}" class="addf" style="margin-top:10px">
@@ -213,6 +213,7 @@ function viewHome(pid){
       <div><b>${Q.dec(m.pct)}٪</b><span>من القرآن</span></div>
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
+    ${goalPanel(pid, edit)}
     ${!edit ? '' : !m.words ? `
       <section class="panel today">
         <h2>ابدأ برسم خريطتك</h2>
@@ -252,6 +253,153 @@ function viewHome(pid){
   };
   // جلسات هذا الفرد من الأجهزة الأخرى
   Cloud.loadSessions(pid).then(ch => { if (ch && location.hash === '#/home' && Store.cur === pid) viewHome(pid); }).catch(() => {});
+}
+
+/* ================= الأهداف ================= */
+// «٣ أوجه»، «وجهان»، «٢٫٥ وجه»: الكسور بصيغة المفرد، والأعداد الصحيحة بالتمييز
+// المثنّى مجرور/منصوب افتراضًا («نحو وجهين»، «متأخّر وجهين»)، ومرفوع مع nom («بقي وجهان»)
+const unitTxt = (n, u, nom) => {
+  if (u === 'ayah') return count(Math.round(n), 'آية واحدة', nom ? 'آيتان' : 'آيتين', 'آيات', 'آية');
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) && r > 0 ? count(r, 'وجه واحد', nom ? 'وجهان' : 'وجهين', 'أوجه', 'وجهًا') : Q.dec(r) + ' وجه';
+};
+const dayDate = d => new Date(d * 864e5).toLocaleDateString('ar-SA-u-ca-gregory', {day: 'numeric', month: 'long', timeZone: 'UTC'});
+const pct = (a, b) => b ? Math.min(100, a / b * 100) : 0;
+
+// سطر مختصر لبطاقات الأفراد
+function goalLine(p){
+  const gs = Stats.goalStatus(p.id, Stats.weekShared(p.id, Cloud.canEdit(p) || !p.cloud));
+  if (!gs) return '';
+  if (gs.met) return '<small class="gline ok">✓ حقّق هدف الأسبوع</small>';
+  const parts = [];
+  if (gs.newT) parts.push(`حفظ ${gs.unit === 'ayah' ? AR(gs.newD) : Q.dec(gs.newD)}/${gs.unit === 'ayah' ? AR(gs.newT) : Q.dec(gs.newT)}`);
+  if (gs.revT) parts.push(`مراجعة ${Q.dec(gs.revD)}/${Q.dec(gs.revT)}`);
+  return `<small class="gline">الأسبوع: ${parts.join(' · ')}</small>`;
+}
+
+// لوحة «هدف هذا الأسبوع» في الرئيسية
+function goalPanel(pid, edit){
+  const d = Store.data(pid), m = Stats.memorized(pid);
+  if (!d.goal) return edit && m.words ? `
+    <section class="panel goal">
+      <h2>ضع هدفك الأسبوعي</h2>
+      <p class="small" style="margin:4px 0 10px">مقدار حفظ جديد كل أسبوع، ودورة مراجعة لمحفوظك، وهدف كبير إن شئت.</p>
+      <a class="btn primary" href="#/goal">ضع هدفي</a>
+    </section>` : '';
+  const gs = Stats.goalStatus(pid, Stats.weekShared(pid, edit)), bs = Stats.bigStatus(pid);
+  const bar = (label, done, target, unit, ok) => `
+      <div class="gl"><span>${label}</span><b>${unit === 'ayah' ? AR(Math.round(done)) : Q.dec(done)} من ${unitTxt(target, unit)}</b></div>
+      <div class="qbar ${ok ? 'okb' : ''}"><i style="width:${pct(done, target)}%"></i></div>`;
+  const left = gs.daysLeft;
+  let perDay = '';
+  if (gs.newT && !gs.newOk){
+    const rem = gs.newT - gs.newD, days = Math.max(1, Math.min(left, gs.days || left));
+    perDay = `<p class="small" style="margin:6px 0 0">يلزمك نحو ${unitTxt(rem / days, gs.unit)} حفظًا في اليوم لتدرك هدفك.</p>`;
+  }
+  return `
+    <section class="panel goal ${gs.met ? 'met' : ''}">
+      <div class="row between"><h2>هدف هذا الأسبوع</h2><span class="small">${left <= 1 ? 'آخر يوم · الجمعة' : `باقي ${count(left, 'يوم', 'يومان', 'أيام', 'يومًا')} · حتى الجمعة`}</span></div>
+      ${gs.newT ? bar('حفظ جديد', gs.newD, gs.newT, gs.unit, gs.newOk) : ''}
+      ${gs.revT ? bar('مراجعة', gs.revD, gs.revT, 'page', gs.revOk) : ''}
+      ${gs.met ? '<p class="metmsg">أحسنت! حقّقت هدف هذا الأسبوع، بارك الله فيك.</p>' : perDay}
+      ${bs ? `<div class="big-goal">
+        <div class="gl"><span>الهدف الكبير: ${esc(bs.label)}</span><b>${AR(Math.round(bs.frac * 100))}٪</b></div>
+        <div class="qbar"><i style="width:${bs.frac * 100}%"></i></div>
+        <p class="small" style="margin:6px 0 0">${bs.done ? 'تمّ بحمد الله 🎉' : bs.overdue ? `انتهى موعده (${dayDate(bs.due)}) وبقي ${unitTxt((1 - bs.frac) * bs.pages, 'page', true)}.`
+          : `${bs.behind > 0.25 ? `<b class="behind">متأخّر ${unitTxt(bs.behind, 'page')}</b>` : bs.behind < -0.25 ? `<b class="ahead">متقدّم ${unitTxt(-bs.behind, 'page')}</b>` : '<b class="ahead">على المسار</b>'}
+             · قبل ${dayDate(bs.due)} · يلزمك ${unitTxt(bs.perWeek, 'page')} أسبوعيًّا`}</p></div>` : ''}
+      ${edit ? '<p style="margin:10px 0 0"><a class="btn small" href="#/goal">تعديل الهدف</a></p>' : ''}
+    </section>`;
+}
+
+// شاشة وضع الهدف وتعديله
+function viewGoal(pid){
+  const p = Store.profile(pid);
+  if (!Cloud.canEdit(p)) return location.replace('#/home');
+  setTop('هدف ' + p.name, '#/home');
+  const d = Store.data(pid), g = d.goal || {n: 2, nu: 'page', dy: 5, rc: 4, big: null};
+  const m = Stats.memorized(pid), big = g.big || {};
+  const today = Store.today(), iso = x => new Date(x * 864e5).toISOString().slice(0, 10);
+  const opt = (v, t, cur) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${t}</option>`;
+  app.innerHTML = `
+    <form id="goalForm">
+    <section class="panel">
+      <h2>الحفظ الجديد كل أسبوع</h2>
+      <div class="row" style="margin-top:10px">
+        <input type="number" id="gn" min="0" max="100" step="0.5" value="${g.n}" style="width:6em" inputmode="decimal">
+        <select id="gu">${opt('page', 'وجه', g.nu)}${opt('ayah', 'آية', g.nu)}</select>
+        <label for="gd">على</label>
+        <select id="gd">${[3, 4, 5, 6, 7].map(x => opt(x, count(x, 'يوم', 'يومين', 'أيام', 'يومًا'), g.dy)).join('')}</select>
+      </div>
+      <p class="small" id="gnHint"></p>
+      <p class="small">اكتب ٠ إن كنت تريد المراجعة فقط هذه الفترة.</p>
+    </section>
+    <section class="panel">
+      <h2>المراجعة</h2>
+      <div class="row" style="margin-top:10px">
+        <label for="gr">أراجع كل محفوظي كل</label>
+        <select id="gr">${[[2, 'أسبوعين'], [3, '٣ أسابيع'], [4, '٤ أسابيع'], [6, '٦ أسابيع'], [8, '٨ أسابيع'], [0, 'بلا هدف مراجعة']].map(([v, t]) => opt(v, t, g.rc)).join('')}</select>
+      </div>
+      <p class="small" id="grHint"></p>
+    </section>
+    <section class="panel">
+      <h2>الهدف الكبير <span class="small">(اختياري)</span></h2>
+      <div class="row" style="margin-top:10px">
+        <select id="bk">${opt('', 'بلا هدف كبير', big.kind || '')}${opt('juz', 'حفظ جزء', big.kind)}${opt('surah', 'حفظ سورة', big.kind)}</select>
+        <select id="bj" hidden>${Array.from({length: 30}, (_, k) => opt(k + 1, 'الجزء ' + AR(k + 1), big.kind === 'juz' ? big.v : 30)).join('')}</select>
+        <select id="bs" hidden>${Q.surahs.map(s => opt(s.n, AR(s.n) + '. ' + s.name, big.kind === 'surah' ? big.v : 67)).join('')}</select>
+      </div>
+      <div class="row" id="bdRow" style="margin-top:10px" hidden>
+        <label for="bd">قبل تاريخ</label>
+        <input type="date" id="bd" min="${iso(today + 7)}" value="${big.due ? iso(big.due) : iso(today + 90)}">
+      </div>
+      <p class="small" id="bHint"></p>
+    </section>
+    <p class="note">ابدأ بهدف أقلّ مما تظن أنك تقدر عليه، فتحقيقه أسبوعًا بعد أسبوع أنفع من هدف كبير ينكسر. ارفعه بعد شهر إن شئت.</p>
+    <div class="row" style="margin-block:14px 24px">
+      <button class="btn primary" type="submit">حفظ الهدف</button>
+      ${d.goal ? '<button class="btn danger" id="gDel" type="button">إلغاء الهدف</button>' : ''}
+    </div>
+    </form>`;
+
+  const rng = () => {
+    const k = $('#bk').value;
+    if (k === 'juz'){ const j = +$('#bj').value; return {kind: k, v: j, a: Q.juzFirst[j], b: Q.juzLast[j], label: 'الجزء ' + AR(j)}; }
+    if (k === 'surah'){ const s = Q.surahs[+$('#bs').value - 1]; return {kind: k, v: s.n, a: s.start, b: s.start + s.count - 1, label: 'سورة ' + s.name}; }
+    return null;
+  };
+  const hints = () => {
+    const n = +$('#gn').value || 0, u = $('#gu').value, dy = +$('#gd').value, rc = +$('#gr').value;
+    $('#gnHint').textContent = n ? `أي نحو ${unitTxt(n / dy, u)} في كل يوم من أيام الحفظ.` : 'لا حفظ جديد: التركيز على المراجعة.';
+    $('#grHint').textContent = !rc ? '' : m.pages ? `محفوظك ${unitTxt(m.pages, 'page', true)}، فهدف مراجعتك نحو ${unitTxt(Math.max(1, Math.round(m.pages / rc * 2) / 2), 'page')} في الأسبوع، ويزيد تلقائيًّا كلما زاد محفوظك.` : 'ارسم خريطتك أولًا ليُحسب مقدار المراجعة.';
+    const r = rng(), k = $('#bk').value;
+    $('#bj').hidden = k !== 'juz'; $('#bs').hidden = k !== 'surah'; $('#bdRow').hidden = !r;
+    if (!r){ $('#bHint').textContent = ''; return; }
+    const due = Math.floor(Date.parse($('#bd').value) / 864e5);
+    const mm = Store.mem(pid); let left = 0;
+    for (let i = r.a; i <= r.b; i++) if (!mm[i]) left += Q.words[i] / Q.pageWords[Q.page[i]];
+    const weeks = Math.max(1, (due - today) / 7);
+    $('#bHint').textContent = !left ? `تحفظ ${r.label} كاملًا، ما شاء الله.` : `بقي من ${r.label} ${unitTxt(left, 'page', true)}، فيلزمك نحو ${unitTxt(left / weeks, 'page')} في الأسبوع.`;
+  };
+  $$('#goalForm input, #goalForm select').forEach(x => { x.oninput = hints; x.onchange = hints; });
+  hints();
+  if ($('#gDel')) $('#gDel').onclick = () => { if (confirm('إلغاء الهدف؟')){ d.goal = null; Store.touch(pid); location.hash = '#/home'; } };
+  $('#goalForm').onsubmit = e => {
+    e.preventDefault();
+    const r = rng(), due = r ? Math.floor(Date.parse($('#bd').value) / 864e5) : 0;
+    if (r && !(due > today)) return alert('اختر تاريخًا بعد اليوم للهدف الكبير.');
+    let bigG = null;
+    if (r){
+      const same = big.kind === r.kind && big.v === r.v && big.due === due;
+      const mm = Store.mem(pid); let tw = 0, mw = 0;
+      for (let i = r.a; i <= r.b; i++){ tw += Q.words[i]; if (mm[i]) mw += Q.words[i]; }
+      bigG = same ? big : {...r, due, since: today, f0: tw ? mw / tw : 0};
+    }
+    d.goal = {n: Math.max(0, +$('#gn').value || 0), nu: $('#gu').value, dy: +$('#gd').value, rc: +$('#gr').value,
+              big: bigG, since: (d.goal && d.goal.since) || today, by: Cloud.st.user ? Cloud.st.user.uid : null};
+    d.nl = d.nl || {};
+    Store.touch(pid); location.hash = '#/home';
+  };
 }
 
 /* ================= الخريطة ================= */
