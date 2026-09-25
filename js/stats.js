@@ -231,5 +231,60 @@ const Stats = (() => {
     return {parts, cap, sum, fill: cap ? sum / cap : 0, full: cap > 0 && sum >= cap};
   }
 
-  return {contribution, tank, TANK, dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
+  /* ---------- حفظ اليوم ----------
+     المقدار = هدف الحفظ الأسبوعي ÷ أيام الحفظ. البداية من حيث توقّف الحافظ، في حدود الهدف الكبير إن وُجد.
+     الترتيب: 'desc' من الناس صعودًا (السورة كاملة ثم التي قبلها)، أو 'asc' بترتيب المصحف. */
+  function hifzOrder(id){
+    const g = Store.data(id).goal || {};
+    if (g.ord === 'asc' || g.ord === 'desc') return g.ord;
+    const m = Store.mem(id); let low = 0, high = 0;            // تلقائي: أين أكثر المحفوظ؟
+    for (let i = 0; i < m.length; i++) if (m[i]){ if (Q.juz[i] >= 29) high++; else low++; }
+    return high >= low ? 'desc' : 'asc';
+  }
+  function makeHifz(id, q, unit){
+    const g = Store.data(id).goal, m = Store.mem(id), big = g && g.big;
+    const lo = big ? big.a : 0, hi = big ? big.b : Q.TOTAL_AYAT - 1;
+    const surs = []; for (let s = Q.sur[lo]; s <= Q.sur[hi]; s++) surs.push(s);
+    if (hifzOrder(id) === 'desc') surs.reverse();
+    const pick = []; let acc = 0, started = false, done = false;
+    for (const s of surs){
+      const S = Q.surahs[s - 1], a0 = Math.max(S.start, lo), b0 = Math.min(S.start + S.count - 1, hi);
+      for (let i = a0; i <= b0; i++){
+        if (m[i]){ if (started){ done = true; break; } continue; }   // لا نقفز فوق محفوظ بعد البدء
+        started = true; pick.push(i); acc += unit === 'ayah' ? 1 : ayahPages(i);
+        if (acc >= q * (unit === 'ayah' ? 1 : 0.9)){
+          // بقية السورة قليلة (٣ آيات أو نصف المقدار)؟ تُتمّ اليوم بدل أن تُترك ليوم آخر
+          let rest = 0, restP = 0, j = i + 1;
+          while (j <= b0 && !m[j]){ rest++; restP += ayahPages(j); j++; }
+          if (j > b0 && rest && (rest <= 3 || (unit === 'ayah' ? rest : restP) <= q / 2)) for (let x = i + 1; x <= b0; x++) pick.push(x);
+          done = true; break;
+        }
+      }
+      if (done) break;
+    }
+    const items = [];
+    pick.forEach(i => { const L = items[items.length - 1]; if (L && L[1] === i - 1 && Q.sur[i] === Q.sur[L[0]]) L[1] = i; else items.push([i, i]); });
+    return items;
+  }
+  function hifz(id, create){
+    const d = Store.data(id), t = Store.today(), g = d.goal;
+    if (d.hifz && d.hifz.d === t) return d.hifz;
+    if (!create || !g || !g.n) return null;
+    const q = g.n / (g.dy || 5), unit = g.nu === 'ayah' ? 'ayah' : 'page';
+    d.hifz = {d: t, q: unit === 'ayah' ? Math.max(1, Math.round(q)) : q, unit, items: makeHifz(id, unit === 'ayah' ? Math.max(1, Math.round(q)) : q, unit)};
+    Store.touch(id);
+    return d.hifz;
+  }
+  function hifzStatus(id, hz){
+    const m = Store.mem(id);
+    const items = hz.items.map(([a, b]) => {
+      let ok = true, p = 0; for (let i = a; i <= b; i++){ p += ayahPages(i); if (!m[i]) ok = false; }
+      return {a, b, pages: p, ayat: b - a + 1, done: ok};
+    });
+    return {items, next: items.find(x => !x.done) || null, complete: items.length > 0 && items.every(x => x.done),
+            total: items.reduce((t, x) => t + (hz.unit === 'ayah' ? x.ayat : x.pages), 0),
+            done: items.filter(x => x.done).reduce((t, x) => t + (hz.unit === 'ayah' ? x.ayat : x.pages), 0)};
+  }
+
+  return {hifz, hifzStatus, hifzOrder, contribution, tank, TANK, dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
 })();

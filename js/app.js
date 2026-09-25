@@ -39,7 +39,7 @@ function route(keepScroll){
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
@@ -228,7 +228,7 @@ function viewHome(pid){
         <h2>ابدأ برسم خريطتك</h2>
         <p>علّم ما تحفظه من القرآن الآن، بالجزء أو بالسورة أو بالوجه، ليعرف البرنامج ماذا يراجع معك.</p>
         <a class="btn primary" href="#/map">ارسم خريطتي</a>
-      </section>` : '') : wirdCard(pid, edit, sg, reciteMode(pid))}
+      </section>` : '') : `<div class="today-grid">${hifzCard(pid, reciteMode(pid))}${wirdCard(pid, edit, sg, reciteMode(pid))}</div>`}
     <nav class="actions">
       ${Cloud.canRecite(p) ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
       ${own && p.cloud ? `<a class="act" href="#/ask">${ICON_EAR}سمّعني</a>` : ''}
@@ -241,7 +241,7 @@ function viewHome(pid){
     ${!p.cloud || isOwner() ? `<p class="row" style="justify-content:center;margin-top:24px">
       ${p.cloud && !own && Array.isArray(p.uids) && p.uids.length ? '<button class="btn small" id="rel" type="button">السماح بربطه بجهاز جديد</button>' : ''}
       <button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>` : ''}`;
-  bindPeerBanner();
+  bindPeerBanner(); bindHifz(pid);
   if ($('#rel')) $('#rel').onclick = async () => {
     if (!confirm(`سيُفكّ ربط ${p.name} بجهازه الحالي، ثم يختار «أنا ${p.name}» من جواله الجديد. متابعة؟`)) return;
     try { await Cloud.releaseMember(pid); viewHome(pid); } catch(e){ alert('تعذّر ذلك. تأكّد من الاتصال.'); }
@@ -338,6 +338,10 @@ function viewGoal(pid){
         <select id="gd">${[3, 4, 5, 6, 7].map(x => opt(x, count(x, 'يوم', 'يومين', 'أيام', 'يومًا'), g.dy)).join('')}</select>
       </div>
       <p class="small" id="gnHint"></p>
+      <div class="row" style="margin-top:8px">
+        <label for="go">ترتيب الحفظ</label>
+        <select id="go">${opt('', 'تلقائي (بحسب محفوظك)', g.ord || '')}${opt('desc', 'من الناس صعودًا (جزء عمّ أولًا)', g.ord)}${opt('asc', 'بترتيب المصحف (من الفاتحة)', g.ord)}</select>
+      </div>
       <p class="small">اكتب ٠ إن كنت تريد المراجعة فقط هذه الفترة.</p>
     </section>
     <section class="panel">
@@ -401,7 +405,8 @@ function viewGoal(pid){
       for (let i = r.a; i <= r.b; i++){ tw += Q.words[i]; if (mm[i]) mw += Q.words[i]; }
       bigG = same ? big : {...r, due, since: today, f0: tw ? mw / tw : 0};
     }
-    d.goal = {n: Math.max(0, +$('#gn').value || 0), nu: $('#gu').value, dy: +$('#gd').value, rc: +$('#gr').value,
+    d.hifz = null;   // يُعاد حساب حفظ اليوم بالهدف الجديد
+    d.goal = {n: Math.max(0, +$('#gn').value || 0), nu: $('#gu').value, dy: +$('#gd').value, rc: +$('#gr').value, ord: $('#go').value,
               big: bigG, since: (d.goal && d.goal.since) || today, by: Cloud.st.user ? Cloud.st.user.uid : null};
     d.nl = d.nl || {};
     Store.touch(pid); location.hash = '#/home';
@@ -893,6 +898,97 @@ function viewMajlis(){
     };
     requestAnimationFrame(step);
   }
+}
+
+/* ================= حفظ اليوم ================= */
+const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14v-2a9 9 0 0 1 18 0v2"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/></svg>';
+function hifzCard(pid, mode){
+  const hz = Stats.hifz(pid, mode === 'self');
+  if (!hz) return '';
+  const hs = Stats.hifzStatus(pid, hz), unit = hz.unit;
+  if (!hs.items.length) return `<section class="panel today hifz"><h2>حفظ اليوم</h2><p class="small">لا مقطع جديد في حدود هدفك؛ ما شاء الله، أتممت ما حدّدته. عدّل هدفك الكبير لتكمل.</p></section>`;
+  const amt = unit === 'ayah' ? count(Math.round(hs.total), 'آية واحدة', 'آيتان', 'آيات', 'آية') : unitTxt(hs.total, 'page', true);
+  return `
+    <section class="panel today hifz ${hs.complete ? 'met' : ''}">
+      <div class="row between"><h2>حفظ اليوم</h2><span class="chip">${amt}</span></div>
+      <ol class="wlist">${hs.items.map(x => `<li class="${x.done ? 'done' : ''}">
+        <span>${itemLabel(x.a, x.b)}</span><span class="wk">${x.done ? '✓' : ''}</span>
+        ${!x.done ? `<div class="hz-acts">
+          <a class="btn small" href="#/play/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_PLAY} استمع</a>
+          ${mode === 'self' ? `<a class="btn small primary" href="${tasmeeHref(x.a, x.b)}">${ICON.mic} سمّع حفظك</a>
+            <button class="btn small" type="button" data-mark="${x.a}-${x.b}">حفظتُها</button>`
+          : mode === 'listen' ? `<a class="btn small primary" href="${listenHref(pid, x.a, x.b)}">${ICON_EAR} سمّع له</a>` : ''}
+        </div>` : ''}</li>`).join('')}</ol>
+      ${hs.complete ? '<p class="metmsg">أتممت حفظ اليوم، زادك الله حفظًا.</p>'
+        : '<p class="small" style="margin:6px 0 0">استمع وكرّر حتى تحفظ، ثم سمّع حفظك؛ فإن أتقنته أُضيف إلى محفوظك.</p>'}
+    </section>`;
+}
+function bindHifz(pid){
+  $$('[data-mark]').forEach(b => b.onclick = () => {
+    const [a, c] = b.dataset.mark.split('-').map(Number);
+    if (!confirm(`هل حفظت ${itemLabel(a, c)} وسمّعتها لمعلّمك أو لأحد أهلك؟`)) return;
+    Store.setMem(pid, a, c, true); route(true);
+  });
+}
+
+/* مشغّل التلاوة للحفظ: كل آية تُكرَّر عددًا يختاره الحافظ، والآية الحالية مظلَّلة */
+const RECITERS = [['Husary_128kbps', 'الحصري'], ['Husary_Muallim_128kbps', 'الحصري (المصحف المعلّم)'], ['Minshawy_Murattal_128kbps', 'المنشاوي'], ['Alafasy_128kbps', 'العفاسي']];
+const pad3 = n => String(n).padStart(3, '0');
+function viewPlay(pid, [s, a, b]){
+  const sur = Q.surahs[Math.min(Math.max(s || 67, 1), 114) - 1];
+  a = Math.min(Math.max(a || 1, 1), sur.count); b = Math.min(Math.max(b || a, a), sur.count);
+  const A = sur.start + a - 1, B = sur.start + b - 1;
+  setTop('استمع: ' + sur.name, '#/home');
+  let rec = Store.pref('reciter', RECITERS[0][0]), rep = Store.pref('repeat', 3);
+  const withBas = a === 1 && sur.n !== 1 && sur.n !== 9;
+  app.innerHTML = `
+    <section class="panel">
+      <h2>${itemLabel(A, B)}</h2>
+      <div class="row" style="margin-top:10px">
+        <label for="pr">القارئ</label><select id="pr">${RECITERS.map(([k, n]) => `<option value="${k}" ${k === rec ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <label for="pp">تكرار كل آية</label><select id="pp">${[1, 3, 5, 10].map(n => `<option value="${n}" ${n === rep ? 'selected' : ''}>${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')}</option>`).join('')}</select>
+      </div>
+    </section>
+    <section class="mushaf">
+      <div class="sura-head">سُورَةُ ${sur.name}</div>
+      ${withBas ? '<div class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>' : ''}
+      <div class="text play-text">${Array.from({length: B - A + 1}, (_, k) => `<span class="pa" data-i="${A + k}">${Q.uth[A + k].split('\t').join(' ')} <span class="num">﴿${AR(Q.num[A + k])}﴾</span></span>`).join(' ')}</div>
+    </section>
+    <div class="bar"><div class="wrap">
+      <button class="mic" id="pl" type="button" aria-label="تشغيل">${ICON_PLAY}</button>
+      <div class="prog"><div class="t" id="pt">اضغط للاستماع</div><div class="track"><i id="pi"></i></div></div>
+      ${Cloud.canRecite(Store.profile(pid)) ? `<a class="btn" href="${tasmeeHref(A, B)}">سمّع حفظك</a>` : ''}
+    </div></div>`;
+  document.body.classList.add('has-bar');
+  const audio = new Audio(); audio.preload = 'auto';
+  // قائمة التشغيل: [البسملة]، ثم كل آية مكرّرةً
+  let list = [], pos = 0, playing = false;
+  const build = () => {
+    list = [];
+    if (withBas) list.push({i: -1, url: `https://everyayah.com/data/${rec}/001001.mp3`});
+    for (let i = A; i <= B; i++) for (let k = 0; k < rep; k++) list.push({i, k, url: `https://everyayah.com/data/${rec}/${pad3(sur.n)}${pad3(Q.num[i])}.mp3`});
+  };
+  const mark = () => {
+    const cur = list[pos];
+    $$('.pa').forEach(el => el.classList.toggle('on', cur && +el.dataset.i === cur.i));
+    const on = $('.pa.on'); if (on){ const r = on.getBoundingClientRect(); if (r.bottom > innerHeight - 130 || r.top < 60) on.scrollIntoView({block: 'center', behavior: 'smooth'}); }
+    $('#pi').style.width = (list.length ? pos / list.length * 100 : 0) + '%';
+    $('#pt').textContent = !cur ? 'انتهى' : cur.i < 0 ? 'البسملة' : `الآية ${AR(Q.num[cur.i])} · التكرار ${AR(cur.k + 1)} من ${AR(rep)}`;
+    $('#pl').classList.toggle('on', playing);
+  };
+  const playAt = p => {
+    pos = p; if (pos >= list.length){ playing = false; pos = 0; mark(); $('#pt').textContent = 'انتهى. أعد الاستماع أو سمّع حفظك.'; return; }
+    audio.src = list[pos].url; audio.play().then(() => { playing = true; mark(); }).catch(() => { playing = false; mark(); $('#pt').textContent = 'تعذّر التشغيل. تأكّد من الاتصال.'; });
+  };
+  audio.onended = () => playAt(pos + 1);
+  build();
+  $('#pl').onclick = () => { if (playing){ audio.pause(); playing = false; mark(); } else if (audio.src && audio.currentTime > 0 && !audio.ended){ audio.play(); playing = true; mark(); } else playAt(pos); };
+  $('#pr').onchange = e => { rec = e.target.value; Store.setPref('reciter', rec); const was = playing; audio.pause(); build(); pos = 0; if (was) playAt(0); else mark(); };
+  $('#pp').onchange = e => { rep = +e.target.value; Store.setPref('repeat', rep); const cur = list[pos]; build(); pos = Math.max(0, list.findIndex(x => cur && x.i === cur.i)); mark(); };
+  // اضغط آيةً لتبدأ منها
+  $$('.pa').forEach(el => el.onclick = () => { const p = list.findIndex(x => x.i === +el.dataset.i); if (p >= 0) playAt(p); });
+  mark();
+  cleanup = () => { audio.pause(); audio.src = ''; };
 }
 
 /* ================= الخريطة ================= */

@@ -305,3 +305,12 @@ body.stage main.wrap{max-width:none}
 @media (max-width:700px){.mj-tank{flex-direction:column}.mj-stats{grid-template-columns:repeat(2,1fr)}}
 @media (prefers-reduced-motion: reduce){.slide.in{animation:none}}
 .slide{overflow:auto}
+
+/* حفظ اليوم بجانب ورد المراجعة */
+.today-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px;align-items:start;margin-block:12px}
+.today-grid > .panel{margin:0}
+.hifz{border-color:var(--gold);background:var(--hint-bg)}
+.hifz.met{border-color:var(--fresh);background:var(--accent-soft)}
+.hz-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.play-text .pa{cursor:pointer;border-radius:8px;transition:background .3s}
+.play-text .pa.on{background:var(--hint-bg);box-shadow:0 0 0 3px var(--hint-bg)}
