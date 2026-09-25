@@ -9,6 +9,10 @@ service cloud.firestore {
     function fam(fid) { return /databases/$(database)/documents/families/$(fid); }
     function inFamily(fid) { return signedIn() && exists(/databases/$(database)/documents/families/$(fid)/access/$(request.auth.uid)); }
     function isOwner(fid) { return signedIn() && get(fam(fid)).data.owner == request.auth.uid; }
+    // هل هذا الجهاز صاحب الفرد؟ (uids = أجهزة الفرد)
+    function ownsMember(fid, mid) {
+      return request.auth.uid in get(/databases/$(database)/documents/families/$(fid)/members/$(mid)).data.get('uids', []);
+    }
     function hasFamily() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
 
     // دعوات إنشاء العائلات: ينشئها المدير، ويستعملها ولي الأمر مرة واحدة
@@ -38,11 +42,18 @@ service cloud.firestore {
             || getAfter(fam(fid)).data.owner == request.auth.uid);
         allow delete: if isOwner(fid) || (signedIn() && uid == request.auth.uid);
       }
+      // كل أفراد العائلة يرون الجميع، ولا يعدّل الفردَ إلا جهازه أو وليّ الأمر، ولا يحذفه إلا وليّ الأمر
       match /members/{mid} {
-        allow read, create, update: if inFamily(fid);
+        allow read: if inFamily(fid);
+        allow create: if inFamily(fid) && (isOwner(fid) || request.resource.data.uids == [request.auth.uid]);
+        allow update: if inFamily(fid) && (
+          isOwner(fid)
+          || (request.auth.uid in resource.data.get('uids', []) && request.resource.data.uids == resource.data.uids)
+          || (resource.data.get('uids', null) == [] && request.resource.data.uids == [request.auth.uid]));
         allow delete: if isOwner(fid);
         match /sessions/{sid} {
-          allow read, create, update: if inFamily(fid);
+          allow read: if inFamily(fid);
+          allow create, update: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, mid));
           allow delete: if isOwner(fid);
         }
       }
@@ -61,9 +72,11 @@ service cloud.firestore {
     // أرقام فقط للوحة القيادة
     match /pub/{mid} {
       allow read: if isAdmin();
-      allow create: if inFamily(request.resource.data.fid);
-      allow update: if inFamily(resource.data.fid) && request.resource.data.fid == resource.data.fid;
-      allow delete: if isAdmin() || inFamily(resource.data.fid);
+      allow create: if inFamily(request.resource.data.fid)
+        && (isOwner(request.resource.data.fid) || ownsMember(request.resource.data.fid, mid));
+      allow update: if inFamily(resource.data.fid) && request.resource.data.fid == resource.data.fid
+        && (isOwner(resource.data.fid) || ownsMember(resource.data.fid, mid));
+      allow delete: if isAdmin() || isOwner(resource.data.fid);
     }
     match /daily/{day} {
       allow read: if isAdmin();

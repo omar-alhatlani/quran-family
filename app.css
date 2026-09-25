@@ -191,3 +191,5 @@ details summary{cursor:pointer;font-weight:600}
 @media (prefers-reduced-motion: reduce){.w,.w.cur,.w.fresh,.mic.on{animation:none;transition:none}}
 .jcode{font-size:24px;letter-spacing:3px;font-variant-numeric:tabular-nums}
 .codein{width:9em!important;text-transform:uppercase;letter-spacing:2px}
+.claim{font-size:15px}
+.addf{max-width:420px}

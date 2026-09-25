@@ -51,8 +51,8 @@ const Store = (() => {
     profile: id => DB.profiles.find(p => p.id === R(id)),
     get cur(){ return DB.cur && DB.profiles.find(p => p.id === DB.cur) ? DB.cur : null; },
     set cur(id){ DB.cur = id; save(); },
-    addProfile(name, color, id = uid()){
-      const p = {id, name, color, created: Date.now()}; DB.profiles.push(p); data(p.id); touch(p.id); return p;
+    addProfile(name, color, id = uid(), forOther = false){
+      const p = {id, name, color, created: Date.now()}; if (forOther) p.forOther = true; DB.profiles.push(p); data(p.id); touch(p.id); return p;
     },
     removeProfile(id){ DB.profiles = DB.profiles.filter(p => p.id !== id); delete DB.d[id]; delete memCache[id]; if (DB.cur === id) DB.cur = null; save(); },
     // تغيير معرّف فرد محلّي إلى معرّفه في السحابة
@@ -63,10 +63,10 @@ const Store = (() => {
       if (DB.cur === oldId) DB.cur = newId; save();
     },
     // نسخة السحابة أحدث: تحلّ محلّ المحلية
-    applyRemote(id, {name, color, mem: ranges, rev, mis, up}){
+    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up}){
       let p = DB.profiles.find(x => x.id === id);
       if (!p){ p = {id, name, color, created: Date.now()}; DB.profiles.push(p); }
-      p.name = name; p.color = color; p.cloud = true;
+      p.name = name; p.color = color; p.cloud = true; p.uids = Array.isArray(uids) ? uids : null;
       const d = data(id);
       if ((up || 0) > (d.up || 0)){ d.mem = ranges; d.rev = rev || {}; d.mis = mis || {}; d.up = up; delete memCache[id]; }
       save();

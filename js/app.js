@@ -45,43 +45,69 @@ window.addEventListener('hashchange', () => route());
 /* ================= الأفراد ================= */
 function viewProfiles(){
   setTop('حلقة البيت');
-  const ps = Store.profiles();
-  app.innerHTML = `
+  const ps = Store.profiles(), inFam = !!(Cloud.st.fid && Cloud.st.family);
+  const card = p => {
+    const m = Stats.memorized(p.id);
+    return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small></span></button>`;
+  };
+  const addForm = (id, label, btn) => `
+      <form id="${id}" class="addf" style="margin-top:10px">
+        <label for="${id}-n">${label}</label>
+        <input type="text" id="${id}-n" maxlength="24" required autocomplete="off">
+        <div class="small" style="margin-top:10px">اللون</div>
+        <div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="${id}-c" value="${c}" ${i === ps.length % COLORS.length ? 'checked' : ''}><span style="background:${c}"></span></label>`).join('')}</div>
+        <button class="btn primary" type="submit">${btn}</button>
+      </form>`;
+  let body;
+  if (inFam){
+    const me = ps.filter(Cloud.mine), others = ps.filter(p => !Cloud.mine(p));
+    const free = others.filter(p => Array.isArray(p.uids) && p.uids.length === 0);
+    body = `
+    <section class="intro"><h1>${me.length ? 'أهلًا ' + esc(me[0].name) : 'من أنت؟'}</h1>
+      <p class="muted">${me.length ? 'اضغط اسمك لتكمل حفظك ومراجعتك.' : 'اختر اسمك إن أضافه وليّ الأمر، أو أضف اسمك.'}</p></section>
+    ${me.length ? `<div class="profiles">${me.map(card).join('')}</div>` : `
+    <section class="panel today">
+      ${free.length ? `<h3>هل أنت أحد هؤلاء؟</h3><div class="row" style="margin-top:8px">${free.map(p => `<button class="btn claim" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>` : ''}
+      ${addForm('meForm', free.length ? 'أو أضف اسمك' : 'اسمك', 'دخول باسمي')}
+    </section>`}
+    ${others.length ? `<h3 style="margin-top:18px">أفراد الحلقة <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
+    ${familyPanel()}
+    ${isOwner() ? `<details class="panel"><summary>إضافة فرد ليس معه جوال</summary>
+      <p class="small">تديره أنت من جوالك، ويمكنه لاحقًا أن يختاره من جواله بعبارة «أنا …».</p>${addForm('otherForm', 'الاسم', 'إضافة')}</details>` : ''}`;
+  } else {
+    body = `
     <section class="intro">
       <h1>${ps.length ? 'من سيسمّع الآن؟' : 'أهلًا بكم في حلقة البيت'}</h1>
-      <p class="muted">${ps.length ? 'اختر اسمك لتكمل حفظك ومراجعتك.' : 'أضيفوا أفراد العائلة، ثم يرسم كل واحد خريطة ما يحفظه من القرآن.'}</p>
+      <p class="muted">${ps.length ? 'اختر اسمك لتكمل حفظك ومراجعتك.' : 'اربط جوالك بحلقة عائلتك، أو جرّب البرنامج على هذا الجهاز وحده.'}</p>
     </section>
-    <div class="profiles">${ps.map(p => {
-      const m = Stats.memorized(p.id);
-      return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small></span></button>`;
-    }).join('')}</div>
+    <div class="profiles">${ps.map(card).join('')}</div>
     ${familyPanel()}
-    <details class="panel" ${ps.length ? '' : 'open'}>
-      <summary>إضافة فرد من العائلة</summary>
-      <form id="addForm" style="margin-top:10px">
-        <label for="pname">الاسم</label>
-        <input type="text" id="pname" maxlength="24" required autocomplete="off">
-        <div class="small" style="margin-top:10px">اللون</div>
-        <div class="swatches">${COLORS.map((c, i) => `<label><input type="radio" name="pcolor" value="${c}" ${i === ps.length % COLORS.length ? 'checked' : ''}><span style="background:${c}"></span></label>`).join('')}</div>
-        <button class="btn primary" type="submit">إضافة</button>
-      </form>
-    </details>
+    <details class="panel" ${ps.length || Cloud.st.ok ? '' : 'open'}><summary>إضافة فرد على هذا الجهاز</summary>${addForm('addForm', 'الاسم', 'إضافة')}</details>`;
+  }
+  app.innerHTML = body + `
     <section class="panel">
       <h3>النسخة الاحتياطية</h3>
-      <p class="small">البيانات محفوظة في هذا الجهاز فقط. نزّل نسخة احتياطية بين حين وآخر، ويمكنك استرجاعها في أي جهاز.</p>
+      <p class="small">${inFam ? 'بيانات الحلقة محفوظة في السحابة. ويمكنك مع ذلك تنزيل نسخة من هذا الجهاز.' : 'البيانات محفوظة في هذا الجهاز فقط. نزّل نسخة احتياطية بين حين وآخر، ويمكنك استرجاعها في أي جهاز.'}</p>
       <div class="row">
         <button class="btn" id="exp" type="button">تنزيل نسخة احتياطية</button>
-        <label class="btn" for="imp" style="color:var(--ink);font-size:14px">استرجاع من ملف</label>
-        <input type="file" id="imp" accept="application/json,.json" hidden>
+        ${inFam ? '' : '<label class="btn" for="imp" style="color:var(--ink);font-size:14px">استرجاع من ملف</label><input type="file" id="imp" accept="application/json,.json" hidden>'}
       </div>
     </section>`;
+
   $$('.prof').forEach(b => b.onclick = () => { Store.cur = b.dataset.id; location.hash = '#/home'; });
-  $('#addForm').onsubmit = e => {
+  $$('.claim').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await Cloud.claimMember(b.dataset.id); Store.cur = b.dataset.id; location.hash = '#/home'; }
+    catch(e){ b.disabled = false; alert('تعذّر الربط. ربما اختاره جهاز آخر؛ اطلب من وليّ الأمر أن يسمح بربطه من جديد.'); }
+  });
+  const bindAdd = (id, forOther) => { const f = $('#' + id); if (!f) return; f.onsubmit = e => {
     e.preventDefault();
-    const name = $('#pname').value.trim(); if (!name) return;
-    const p = Store.addProfile(name, $('input[name=pcolor]:checked').value);
+    const name = $(`#${id}-n`).value.trim(); if (!name) return;
+    const p = Store.addProfile(name, $(`input[name=${id}-c]:checked`).value, undefined, forOther);
+    if (forOther){ route(true); return; }
     Store.cur = p.id; location.hash = '#/home';
-  };
+  }; };
+  bindAdd('addForm', false); bindAdd('meForm', false); bindAdd('otherForm', true);
   bindFamilyPanel();
   $('#exp').onclick = () => {
     const blob = new Blob([Store.exportJSON()], {type: 'application/json'});
@@ -89,7 +115,7 @@ function viewProfiles(){
     a.download = `حلقة-البيت-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
-  $('#imp').onchange = async e => {
+  if ($('#imp')) $('#imp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     if (!confirm('سيحلّ محتوى الملف محلّ كل البيانات في هذا الجهاز. متابعة؟')) return;
     try { Store.importJSON(await f.text()); route(); }
@@ -176,8 +202,10 @@ function viewHome(pid){
   $('#topWho').innerHTML = '';
   const m = Stats.memorized(pid), sg = Stats.suggest(pid), d = Store.data(pid);
   const recent = d.sess.slice(-5).reverse();
+  const edit = Cloud.canEdit(p), own = Cloud.mine(p);
   app.innerHTML = `
-    <section class="who">${avatar(p)}<div><h1>${esc(p.name)}</h1><a href="#/" class="small">تبديل الفرد</a></div></section>
+    <section class="who">${avatar(p)}<div><h1>${esc(p.name)}</h1><a href="#/" class="small">${own || !p.cloud ? 'تبديل الفرد' : 'رجوع إلى الحلقة'}</a></div></section>
+    ${edit ? (own || !p.cloud ? '' : '<p class="note">تدير هذا الملف بصفتك وليّ الأمر.</p>') : '<p class="note">تعرض ملف ' + esc(p.name) + ' للاطّلاع فقط.</p>'}
     <div class="big">
       <div><b>${Q.dec(m.juz)}</b><span>جزء</span></div>
       <div><b>${Q.dec(m.pages)}</b><span>وجه</span></div>
@@ -185,7 +213,7 @@ function viewHome(pid){
       <div><b>${Q.dec(m.pct)}٪</b><span>من القرآن</span></div>
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
-    ${!m.words ? `
+    ${!edit ? '' : !m.words ? `
       <section class="panel today">
         <h2>ابدأ برسم خريطتك</h2>
         <p>علّم ما تحفظه من القرآن الآن، بالجزء أو بالسورة أو بالوجه، ليعرف البرنامج ماذا يراجع معك.</p>
@@ -198,14 +226,21 @@ function viewHome(pid){
         <a class="btn primary" href="#/tasmee/${Q.sur[sg.a]}/${Q.num[sg.a]}/${Q.num[sg.b]}">${ICON.mic} سمّع الآن</a>
       </section>` : ''}
     <nav class="actions">
-      <a class="act" href="#/tasmee">${ICON.mic}تسميع</a>
+      ${edit ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
       <a class="act" href="#/report">${ICON.chart}التقرير</a>
     </nav>
     ${recent.length ? `<section class="panel"><h3>آخر التسميعات</h3><ul class="list">${recent.map(s => `
       <li><span>${Q.rangeLabel(s.a, s.b)} <span class="small">· ${s.kind === 'review' ? 'مراجعة' : 'حفظ جديد'} · ${ago(s.t)}</span></span><b>${AR(s.pct)}٪</b></li>`).join('')}</ul></section>` : ''}
-    <p style="text-align:center;margin-top:24px"><button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>`;
-  $('#del').onclick = async () => {
+    ${!p.cloud || isOwner() ? `<p class="row" style="justify-content:center;margin-top:24px">
+      ${p.cloud && !own && Array.isArray(p.uids) && p.uids.length ? '<button class="btn small" id="rel" type="button">السماح بربطه بجهاز جديد</button>' : ''}
+      <button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>` : ''}`;
+  if ($('#rel')) $('#rel').onclick = async () => {
+    if (!confirm(`سيُفكّ ربط ${p.name} بجهازه الحالي، ثم يختار «أنا ${p.name}» من جواله الجديد. متابعة؟`)) return;
+    try { await Cloud.releaseMember(pid); viewHome(pid); } catch(e){ alert('تعذّر ذلك. تأكّد من الاتصال.'); }
+  };
+  if ($('#del'))
+ $('#del').onclick = async () => {
     if (!p.cloud){
       if (confirm(`سيُحذف ملف ${p.name} وكل تسميعاته من هذا الجهاز. متأكّد؟`)){ Store.removeProfile(pid); location.hash = '#/'; }
       return;
@@ -223,6 +258,7 @@ function viewHome(pid){
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 function viewMap(pid){
   setTop('خريطة الحفظ', '#/home');
+  const edit = Cloud.canEdit(Store.profile(pid));
   const today = Store.today(), m = Store.mem(pid);
   const byJuz = Array.from({length: 31}, () => []);
   for (let pg = 1; pg <= Q.PAGES; pg++) byJuz[Q.juz[Q.pageFirst[pg]]].push(pg);
@@ -246,12 +282,13 @@ function viewMap(pid){
     <div class="grid ${mapMode === 'rev' ? 'rv' : ''}">${byJuz.slice(1).map((pages, k) =>
       `<div class="jrow"><span class="jn">${AR(k + 1)}</span><div class="cells">${pages.map(cellHTML).join('')}</div></div>`).join('')}</div>
     <section class="panel" id="sheet" ${mapSel ? '' : 'hidden'}></section>
-    <section class="panel">
+    ${edit ? '' : '<p class="note">خريطة ' + esc(Store.profile(pid).name) + ' للاطّلاع فقط.</p>'}
+    <section class="panel" ${edit ? '' : 'hidden'}>
       <h3>تعليم سريع بالجزء</h3>
       <p class="small" style="margin:2px 0 0">اضغط الجزء الذي تحفظه كاملًا، واضغطه مرّة أخرى لإلغائه.</p>
       <div class="chips">${Array.from({length: 30}, (_, k) => `<button type="button" class="jchip ${juzState(k + 1)}" data-j="${k + 1}">${AR(k + 1)}</button>`).join('')}</div>
     </section>
-    <section class="panel">
+    <section class="panel" ${edit ? '' : 'hidden'}>
       <h3>السور</h3>
       <div class="slist">${Q.surahs.map(s => {
         const a = surState(s), st = a === 0 ? '—' : a === s.count ? 'كاملة' : `${AR(a)} من ${AR(s.count)}`;
@@ -303,10 +340,10 @@ function viewMap(pid){
         const all = n === b - a + 1, last = Math.max(...Array.from({length: b - a + 1}, (_, k) => rev[a + k] ? rev[a + k][0] : -1));
         return `<li data-a="${a}" data-b="${b}"><span><span class="q">${Q.rangeLabel(a, b)}</span>
           <span class="small"> · ${n === 0 ? 'غير محفوظ' : all ? 'محفوظ' : `محفوظ ${AR(n)} من ${AR(b - a + 1)}`}${last >= 0 ? ' · سُمِّع ' + ago(Date.now() - (today - last) * 864e5) : ''}</span></span>
-          <span class="row"><button class="btn small" type="button" data-act="t">${all ? 'إلغاء' : 'محفوظ'}</button>
-          <a class="btn small primary" href="#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}">سمّع</a></span></li>`;
+          ${edit ? `<span class="row"><button class="btn small" type="button" data-act="t">${all ? 'إلغاء' : 'محفوظ'}</button>
+          <a class="btn small primary" href="#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}">سمّع</a></span>` : ''}</li>`;
       }).join('')}</ul>`;
-    $$('#sheet li').forEach(li => li.querySelector('[data-act=t]').onclick = () => {
+    if (edit) $$('#sheet li').forEach(li => li.querySelector('[data-act=t]').onclick = () => {
       const a = +li.dataset.a, b = +li.dataset.b; let n = 0; for (let i = a; i <= b; i++) n += m[i];
       Store.setMem(pid, a, b, n !== b - a + 1); rerender();
     });
@@ -315,6 +352,7 @@ function viewMap(pid){
 
 /* ================= التسميع ================= */
 function viewTasmee(pid, [s, a, b]){
+  if (!Cloud.canEdit(Store.profile(pid))) return location.replace('#/home');
   // المقطع الافتراضي: المقترح، ثم آخر تسميع، ثم الملك ١–٥
   if (!s){
     const sg = Stats.suggest(pid), last = Store.data(pid).sess.slice(-1)[0];

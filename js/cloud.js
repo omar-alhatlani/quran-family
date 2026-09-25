@@ -69,10 +69,17 @@ const Cloud = (() => {
         if (ch.type === 'removed'){ Store.removeProfile(ch.doc.id); return; }
         const x = ch.doc.data();
         Store.applyRemote(ch.doc.id, {...x, mem: decodeMem(x.mem)});
+        if (!Array.isArray(x.uids) && (uploadedHere(ch.doc.id) || isOwner()))
+          ch.doc.ref.update({uids: uploadedHere(ch.doc.id) ? [user.uid] : []}).catch(() => {});
       });
       if (changed) emit();
     }, () => {});
   }
+  const uploadedHere = id => Object.values(Store.DB.alias || {}).includes(id);
+  const isOwner = () => !!(st.family && user && st.family.owner === user.uid);
+  // الأفراد الذين يملكهم هذا الجهاز
+  const mine = p => !!(p && (!p.cloud || (user && Array.isArray(p.uids) && p.uids.includes(user.uid))));
+  const canEdit = p => !!(p && (mine(p) || (p.cloud && isOwner())));
   function detach(){ if (unsubMembers){ unsubMembers(); unsubMembers = null; } st.fid = null; st.family = null; }
 
   const encodeMem = r => r.map(([a, b]) => a === b ? `${a}` : `${a}-${b}`).join(',');
@@ -84,7 +91,8 @@ const Cloud = (() => {
     const local = Store.profiles().filter(p => !p.cloud);
     if (!local.length) return;
     const existing = await db.collection(`families/${st.fid}/members`).get();
-    const byName = {}; existing.forEach(d => { byName[d.data().name.trim()] = d; });
+    const byName = {};
+    existing.forEach(d => { const u = d.data().uids; if (Array.isArray(u) && u.length === 0) byName[d.data().name.trim()] = d; });
     for (const p of local){
       const match = byName[p.name.trim()];
       const ref = match ? match.ref : db.collection(`families/${st.fid}/members`).doc();
@@ -103,6 +111,7 @@ const Cloud = (() => {
       }
       Store.renameProfile(p.id, ref.id);
       const prof = Store.profile(ref.id); prof.cloud = true;
+      prof.uids = p.forOther && isOwner() ? [] : [user.uid];
       if (match){ prof.name = match.data().name; prof.color = match.data().color; }
       d.up = Date.now(); Store.save();
       await ref.set(memberDoc(ref.id));
@@ -118,7 +127,7 @@ const Cloud = (() => {
   }
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
-    return {name: p.name, color: p.color, mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now()};
+    return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now()};
   }
 
   /* ---------- رفع التعديلات ---------- */
@@ -131,6 +140,7 @@ const Cloud = (() => {
     id = Store.R(id);
     const p = Store.profile(id); if (!p || !st.fid) return;
     if (!p.cloud){ await uploadLocal(); return; }
+    if (!canEdit(p)) return;
     await db.doc(`families/${st.fid}/members/${id}`).set(memberDoc(id));
     await pushPub(id);
   }
@@ -148,6 +158,7 @@ const Cloud = (() => {
   async function pushSession(id, rec, isNew){
     id = Store.R(id);
     const p = Store.profile(id); if (!p || !p.cloud) return schedulePush(id);
+    if (!canEdit(p)) return;
     await db.doc(`families/${st.fid}/members/${id}/sessions/${rec.id}`).set(rec);
     if (!isNew) return;
     const inc = FV().increment;
@@ -179,6 +190,16 @@ const Cloud = (() => {
     await auth.signOut();
     Store.profiles().filter(p => p.cloud).map(p => p.id).forEach(id => Store.removeProfile(id));
     Store.DB.fid = null; Store.save();
+  }
+  // «هذا أنا»: ربط فرد غير مربوط بهذا الجهاز
+  async function claimMember(id){
+    await db.doc(`families/${st.fid}/members/${id}`).update({uids: [user.uid]});
+    const p = Store.profile(id); p.uids = [user.uid]; Store.save(); emit();
+  }
+  // وليّ الأمر: يسمح بربط الفرد بجهاز جديد (مثلًا بعد تغيير الجوال)
+  async function releaseMember(id){
+    await db.doc(`families/${st.fid}/members/${id}`).update({uids: []});
+    const p = Store.profile(id); p.uids = []; Store.save(); emit();
   }
   // حذف فرد (لوليّ الأمر)
   async function removeMember(id){
@@ -225,7 +246,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    googleSignIn, signOut, removeMember, createFamily, joinFamily, loadSessions,
+    googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
 })();
