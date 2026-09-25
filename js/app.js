@@ -108,14 +108,19 @@ function viewProfiles(){
     <details class="panel" ${ps.length || Cloud.st.ok ? '' : 'open'}><summary>إضافة فرد على هذا الجهاز</summary>${addForm('addForm', 'الاسم', 'إضافة')}</details>`;
   }
   app.innerHTML = (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
+${inFam && !isOwner() ? '' : `
     <section class="panel">
-      <h3>النسخة الاحتياطية</h3>
-      <p class="small">${inFam ? 'بيانات الحلقة محفوظة في السحابة. ويمكنك مع ذلك تنزيل نسخة من هذا الجهاز.' : 'البيانات محفوظة في هذا الجهاز فقط. نزّل نسخة احتياطية بين حين وآخر، ويمكنك استرجاعها في أي جهاز.'}</p>
+      <h3>${inFam ? 'نسخة احتياطية للحلقة كاملة' : 'النسخة الاحتياطية'}</h3>
+      <p class="small">${inFam
+        ? 'بيانات الحلقة محفوظة في السحابة. وهذه نسخة إضافية في جهازك: محفوظ كل الأفراد ومراجعاتهم وأهدافهم وسجلّ جلساتهم كاملًا. يحسن تنزيلها مرة في الشهر.'
+        : 'البيانات محفوظة في هذا الجهاز فقط. نزّل نسخة احتياطية بين حين وآخر، ويمكنك استرجاعها في أي جهاز.'}</p>
+      ${inFam ? (() => { const t = Store.pref('famBackup', 0); const days = t ? Store.today() - Store.dayOf(t) : -1;
+        return `<p class="small ${days < 0 || days > 30 ? 'due' : ''}">${days < 0 ? 'لم تُنزَّل نسخة بعد.' : 'آخر نسخة: ' + ago(t) + (days > 30 ? ' — حان وقت نسخة جديدة.' : '')}</p>`; })() : ''}
       <div class="row">
-        <button class="btn" id="exp" type="button">تنزيل نسخة احتياطية</button>
+        <button class="btn" id="exp" type="button">${inFam ? 'تنزيل نسخة الحلقة' : 'تنزيل نسخة احتياطية'}</button>
         ${inFam ? '' : '<label class="btn" for="imp" style="color:var(--ink);font-size:14px">استرجاع من ملف</label><input type="file" id="imp" accept="application/json,.json" hidden>'}
       </div>
-    </section>`;
+    </section>`}`;
 
   $$('.prof').forEach(b => b.onclick = () => { Store.cur = b.dataset.id; location.hash = '#/home'; });
   $$('.relink').forEach(b => b.onclick = async () => {
@@ -138,11 +143,27 @@ function viewProfiles(){
   bindAdd('addForm', false); bindAdd('meForm', false); bindAdd('otherForm', true);
   bindPeerBanner(); bindTank();
   bindFamilyPanel();
-  $('#exp').onclick = () => {
-    const blob = new Blob([Store.exportJSON()], {type: 'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `حلقة-البيت-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  const download = (txt, name) => {
+    const blob = new Blob([txt], {type: 'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  if ($('#exp')) $('#exp').onclick = async () => {
+    const date = new Date().toISOString().slice(0, 10);
+    if (!inFam) return download(Store.exportJSON(), `حلقة-البيت-${date}.json`);
+    const btn = $('#exp'); btn.disabled = true; btn.textContent = 'جارٍ جمع بيانات الحلقة…';
+    try {
+      const members = Store.profiles().filter(p => p.cloud);
+      for (const p of members) await Cloud.loadSessions(p.id, true);
+      const fam = Cloud.st.family;
+      const out = {v: 1, kind: 'family-backup', at: Date.now(),
+        family: {id: fam.id, name: fam.name, joinCode: fam.joinCode, created: fam.created, reward: fam.reward || ''},
+        members: members.map(p => ({id: p.id, name: p.name, color: p.color, uids: p.uids || [], data: Store.data(p.id)}))};
+      download(JSON.stringify(out), `حلقة-${fam.name.replace(/s+/g, '-')}-${date}.json`);
+      Store.setPref('famBackup', Date.now());
+      const n = members.reduce((t, p) => t + Store.data(p.id).sess.length, 0);
+      btn.textContent = `نُزّلت: ${count(members.length, 'فرد واحد', 'فردان', 'أفراد', 'فردًا')} و${count(n, 'جلسة واحدة', 'جلستان', 'جلسات', 'جلسة')}`;
+    } catch(e){ btn.disabled = false; btn.textContent = 'تنزيل نسخة الحلقة'; alert('تعذّر جمع البيانات. تأكّد من الاتصال ثم أعد المحاولة.'); }
   };
   if ($('#imp')) $('#imp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;

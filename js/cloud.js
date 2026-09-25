@@ -211,8 +211,8 @@ const Cloud = (() => {
   }
   // جلسات فرد (لتقاريره على جهاز آخر)
   const loaded = new Set();
-  async function loadSessions(id){
-    if (!st.fid || loaded.has(id)) return false;
+  async function loadSessions(id, force){
+    if (!st.fid || (loaded.has(id) && !force)) return false;
     loaded.add(id);
     const snap = await db.collection(`families/${st.fid}/members/${id}/sessions`).orderBy('t', 'desc').limit(1000).get();
     Store.mergeSessions(id, snap.docs.map(d => d.data()));

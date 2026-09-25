@@ -351,3 +351,4 @@ body.stage main.wrap{max-width:none}
 .majlis-card{display:flex;gap:12px;align-items:center;text-decoration:none;color:var(--ink);border-color:var(--gold);background:var(--hint-bg)}
 .majlis-card .mc-ic{font-size:30px}
 .majlis-card b{display:block}
+.small.due{color:var(--hint);font-weight:600}
