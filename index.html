@@ -56,7 +56,8 @@ select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(-
 .w.fresh{animation:pop .35s ease-out}
 @keyframes pop{from{background:var(--pill);color:transparent}to{background:transparent}}
 .w.hint{color:var(--hint);background:var(--hint-bg)}
-.w.given{color:var(--muted)}
+.w.given,.w.gap{color:var(--muted)}
+.w.gap{text-decoration:underline dotted;text-underline-offset:10px}
 .w.wrong{color:var(--wrong);background:var(--wrong-bg);text-decoration:underline wavy;text-decoration-thickness:1px;text-underline-offset:10px;cursor:pointer}
 .w.skip{color:var(--skip);outline:1px dashed var(--skip);outline-offset:-2px;cursor:pointer}
 .w.fixed{color:var(--accent);text-decoration:line-through;text-decoration-thickness:1px}
@@ -125,6 +126,10 @@ select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(-
     <div class="row" style="margin-top:10px">
       <label class="chk"><input type="checkbox" id="firstWord"> إظهار أول كلمة من كل آية</label>
       <label class="chk"><input type="checkbox" id="showLive" checked> عرض ما يسمعه البرنامج</label>
+    </div>
+    <div class="row" id="modeRow" style="margin-top:10px" hidden>
+      <label for="mode">طريقة الاستماع</label>
+      <select id="mode"><option value="sentence">جملة جملة (نغمة عند كل توقّف)</option><option value="continuous">متواصل (تجريبي)</option></select>
     </div>
   </section>
 
@@ -276,6 +281,11 @@ function align(tokens, start, final){
     }
     if (best){
       const garbage = tokens.slice(i, best.j).filter(x => !isRep(x));
+      // أول كلمة أو كلمتان في جلسة جديدة ضاعتا أثناء فتح الميكروفون ← «لم تُسمع» لا «متروكة»
+      if (i === 0 && best.j === 0 && best.k <= 2){
+        for (let q = 0; q < best.k; q++) res[p + q] = {st: 'gap'};
+        p += best.k; i = best.j; lost = 0; continue;
+      }
       for (let q = 0; q < best.k; q++){
         res[p + q] = q < garbage.length ? {st: 'wrong', heard: garbage[q]} : {st: 'skip'};
       }
@@ -290,7 +300,7 @@ function align(tokens, start, final){
 }
 
 /* ---------- العرض ---------- */
-const opt = { firstWord: false, showLive: true };
+const opt = { firstWord: false, showLive: true, mode: store.get('listen-mode', 'sentence') };
 function statusOf(i){ return S.marks[i] || S.live[i] || null; }
 function buildText(){
   const box = $('#text'); box.innerHTML = '';
@@ -313,7 +323,7 @@ function render(){
   spans.forEach(sp => {
     const i = +sp.dataset.i, st = statusOf(i); let c;
     if (S.done) c = !st ? 'w far' : S.fixed.has(i) ? 'w ok fixed' : 'w ' + st.st;
-    else if (st && ['ok', 'hint', 'given'].includes(st.st)){
+    else if (st && ['ok', 'hint', 'given', 'gap'].includes(st.st)){
       c = 'w ' + st.st;
       if (st.st === 'ok' && !S.revealed.has(i)){ S.revealed.add(i); c += ' fresh'; }
     } else c = i === S.pos && S.running ? 'w h cur' : 'w h';
@@ -380,9 +390,9 @@ const IS_ANDROID = /Android/i.test(navigator.userAgent);
 function startRec(){
   if (!SR) return;
   rec = new SR();
-  rec.lang = 'ar-SA'; rec.continuous = !IS_ANDROID; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.lang = 'ar-SA'; rec.continuous = !IS_ANDROID || opt.mode === 'continuous'; rec.interimResults = true; rec.maxAlternatives = 1;
   let finalText = '';
-  log('بدء', IS_ANDROID ? 'جملة جملة' : 'متواصل');
+  log('بدء', rec.continuous ? 'متواصل' : 'جملة جملة');
   rec.onresult = e => {
     const fin = [], all = [];
     for (let k = 0; k < e.results.length; k++){
@@ -411,7 +421,7 @@ function start(){
   S.running = true; S.lastMove = Date.now();
   $('#mic').classList.add('on'); $('#mic').setAttribute('aria-label', 'أوقف مؤقتًا');
   $('#hint').disabled = false; $('#finish').disabled = false;
-  $('#from').disabled = $('#to').disabled = $('#firstWord').disabled = true;
+  $('#from').disabled = $('#to').disabled = $('#firstWord').disabled = $('#mode').disabled = true;
   if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(() => {});
   startRec(); render();
 }
@@ -445,11 +455,11 @@ function finish(){
   S.live && Object.entries(S.live).forEach(([k, v]) => { if (!S.marks[k]) S.marks[k] = v; });
   S.done = true;
   $('#hint').disabled = true; $('#finish').disabled = true;
-  $('#from').disabled = $('#to').disabled = $('#firstWord').disabled = false;
+  $('#from').disabled = $('#to').disabled = $('#firstWord').disabled = $('#mode').disabled = false;
   render(); showResult(true);
 }
 function counts(){
-  const c = {ok: 0, wrong: 0, skip: 0, hint: 0, given: 0, fixed: S.fixed.size, letters: 0, ayat: new Set()};
+  const c = {ok: 0, wrong: 0, skip: 0, hint: 0, given: 0, gap: 0, fixed: S.fixed.size, letters: 0, ayat: new Set()};
   W.forEach((w, i) => {
     const st = S.marks[i]; if (!st) return;
     const s = S.fixed.has(i) ? 'ok' : st.st; c[s]++;
@@ -466,7 +476,8 @@ function showResult(save){
   $('#sOk').textContent = AR(c.ok); $('#sWrong').textContent = AR(c.wrong);
   $('#sSkip').textContent = AR(c.skip); $('#sHint').textContent = AR(c.hint);
   const a1 = W[0].n, a2 = W[W.length - 1].n;
-  $('#summary').textContent = `سمّعت ${count(graded + c.given, "كلمة واحدة", "كلمتين", "كلمات", "كلمة")} و${count(c.letters, "حرفًا واحدًا", "حرفين", "أحرف", "حرفًا")}، وأتممت ${count(c.ayat.size, "آية واحدة", "آيتين", "آيات", "آية")} من المقطع (${AR(a1)}–${AR(a2)}).`;
+  $('#summary').textContent = `سمّعت ${count(graded + c.given + c.gap, "كلمة واحدة", "كلمتين", "كلمات", "كلمة")} و${count(c.letters, "حرفًا واحدًا", "حرفين", "أحرف", "حرفًا")}، وأتممت ${count(c.ayat.size, "آية واحدة", "آيتين", "آيات", "آية")} من المقطع (${AR(a1)}–${AR(a2)}).`
+    + (c.gap ? ` ولم تُحتسب ${count(c.gap, "كلمة واحدة", "كلمتان", "كلمات", "كلمة")} ${c.gap === 2 ? "ضاعتا" : "ضاعت"} لحظة فتح الميكروفون (منقّطة في النص).` : "");
   const ul = $('#errs'); ul.innerHTML = '';
   W.forEach((w, i) => {
     const st = S.marks[i]; if (!st || (st.st !== 'wrong' && st.st !== 'skip')) return;
@@ -515,6 +526,8 @@ function reset(){
     $(id).value = k ? t : f;
     $(id).onchange = reset;
   });
+  if (IS_ANDROID){ $('#modeRow').hidden = false; $('#mode').value = opt.mode; }
+  $('#mode').onchange = e => { opt.mode = e.target.value; store.set('listen-mode', opt.mode); };
   $('#firstWord').onchange = e => { opt.firstWord = e.target.checked; reset(); };
   $('#showLive').onchange = e => { opt.showLive = e.target.checked; $('#livePanel').hidden = !opt.showLive; };
   $('#mic').onclick = () => S.running ? stop() : start();
