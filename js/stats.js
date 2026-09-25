@@ -205,5 +205,31 @@ const Stats = (() => {
     return {items, total, done, next: items.find(x => !x.done) || null, complete: items.length > 0 && items.every(x => x.done)};
   }
 
-  return {dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
+  /* ---------- الخزّان العائلي (أسبوعي، تعاوني) ----------
+     نصيب الفرد = متوسّط نسبة إنجازه من هدفَي الحفظ والمراجعة (يُقبل إلى ١٥٠٪)،
+     + ٥٪ لكل تسميع لغيره هذا الأسبوع (إلى ٢٥٪). السعة = ١٠٠٪ لكل فرد له هدف. */
+  const TANK = {cap: 150, perListen: 5, listenCap: 25};
+  function listensThisWeek(id){
+    const lis = Store.data(id).lis || {}, w = weekStart(Store.today()); let n = 0;
+    Object.entries(lis).forEach(([k, v]) => { if (+k >= w && +k < w + 7) n += v[0]; });
+    return n;
+  }
+  function contribution(id, local){
+    const prog = weekShared(id, local), gs = goalStatus(id, prog);
+    const parts = [];
+    if (gs && gs.newT) parts.push(Math.min(1.5, gs.newD / gs.newT));
+    if (gs && gs.revT) parts.push(Math.min(1.5, gs.revD / gs.revT));
+    const base = parts.length ? parts.reduce((a, b) => a + b, 0) / parts.length * 100 : 0;
+    const bonus = Math.min(TANK.listenCap, TANK.perListen * listensThisWeek(id));
+    return {hasGoal: !!(gs && parts.length), base: Math.min(TANK.cap, base), bonus, pct: Math.min(TANK.cap, base) + bonus};
+  }
+  // ps: [{p, local}] أفراد الحلقة
+  function tank(ps){
+    const parts = ps.map(({p, local}) => ({p, ...contribution(p.id, local)}));
+    const cap = parts.filter(x => x.hasGoal).length * 100;
+    const sum = parts.reduce((t, x) => t + x.pct, 0);
+    return {parts, cap, sum, fill: cap ? sum / cap : 0, full: cap > 0 && sum >= cap};
+  }
+
+  return {contribution, tank, TANK, dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
 })();

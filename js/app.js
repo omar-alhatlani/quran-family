@@ -71,6 +71,7 @@ function viewProfiles(){
       ${free.length ? `<h3>هل أنت أحد هؤلاء؟</h3><div class="row" style="margin-top:8px">${free.map(p => `<button class="btn claim" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>` : ''}
       ${addForm('meForm', free.length ? 'أو أضف اسمك' : 'اسمك', 'دخول باسمي')}
     </section>`}
+    ${tankCard()}
     ${peerBanner()}
     ${others.length ? `<h3 style="margin-top:18px">أفراد الحلقة <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
     ${familyPanel()}
@@ -110,7 +111,7 @@ function viewProfiles(){
     Store.cur = p.id; location.hash = '#/home';
   }; };
   bindAdd('addForm', false); bindAdd('meForm', false); bindAdd('otherForm', true);
-  bindPeerBanner();
+  bindPeerBanner(); bindTank();
   bindFamilyPanel();
   $('#exp').onclick = () => {
     const blob = new Blob([Store.exportJSON()], {type: 'application/json'});
@@ -217,6 +218,7 @@ function viewHome(pid){
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
     ${listenLine(pid)}
+    ${tankLine()}
     ${own ? peerBanner() : ''}
     ${goalPanel(pid, edit)}
     ${!m.words ? (edit ? `
@@ -652,6 +654,73 @@ function listenLine(pid){
   const lis = Store.data(pid).lis || {}, w = Stats.weekStart(Store.today()); let n = 0, words = 0;
   Object.entries(lis).forEach(([k, v]) => { if (+k >= w){ n += v[0]; words += v[1]; } });
   return n ? `<p class="small lisline">${ICON_EAR} سمّع لأهله هذا الأسبوع ${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')} (${count(words, 'كلمة واحدة', 'كلمتين', 'كلمات', 'كلمة')})</p>` : '';
+}
+
+/* ================= الخزّان العائلي ================= */
+function familyTank(){
+  const ps = Store.profiles().filter(p => p.cloud).map(p => ({p, local: Cloud.canRecite(p)}));
+  return Stats.tank(ps);
+}
+// رسم الخزّان: طبقات بألوان الأفراد من الأسفل، بقدر نصيب كلٍّ من السعة
+function tankSVG(t){
+  const X = 14, Y = 14, Wd = 92, H = 172, fillH = Math.min(1, t.fill) * H;
+  let y = Y + H, layers = '';
+  if (t.cap) t.parts.filter(x => x.pct > 0).sort((a, b) => b.pct - a.pct).forEach(x => {
+    const h = Math.min(y - (Y + H - fillH), x.pct / t.cap * H); if (h <= 0) return;
+    y -= h;
+    layers += `<rect x="${X}" y="${y.toFixed(1)}" width="${Wd}" height="${h.toFixed(1)}" fill="${x.p.color}" opacity=".88"/>`;
+  });
+  const top = Y + H - fillH;
+  return `<svg class="tank-svg" viewBox="0 0 120 200" role="img" aria-label="امتلاء الخزّان ${Math.round(Math.min(1, t.fill) * 100)}٪">
+    <defs><clipPath id="tclip"><rect x="${X}" y="${Y}" width="${Wd}" height="${H}" rx="16"/></clipPath></defs>
+    <rect x="${X}" y="${Y}" width="${Wd}" height="${H}" rx="16" fill="var(--cell)"/>
+    <g clip-path="url(#tclip)">${layers}
+      ${fillH > 2 && fillH < H ? `<path d="M${X} ${top.toFixed(1)} q11.5 -5 23 0 t23 0 t23 0 t23 0" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="2"/>` : ''}
+    </g>
+    <rect x="${X}" y="${Y}" width="${Wd}" height="${H}" rx="16" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+    ${[0.25, 0.5, 0.75].map(k => `<line x1="${X + Wd - 10}" x2="${X + Wd}" y1="${(Y + H - k * H).toFixed(1)}" y2="${(Y + H - k * H).toFixed(1)}" stroke="var(--muted)" stroke-width="1.5"/>`).join('')}
+  </svg>`;
+}
+function tankCard(){
+  if (!Cloud.st.fid || !Cloud.st.family) return '';
+  const t = familyTank(), fam = Cloud.st.family, owner = isOwner();
+  const pctFill = Math.round(Math.min(1, t.fill) * 100);
+  const left = Stats.weekStart(Store.today()) + 7 - Store.today();
+  const reward = fam.reward ? `<p class="reward">🎁 مكافأة الأسبوع: <b>${esc(fam.reward)}</b></p>` : owner ? '' : '<p class="small">لم يحدّد وليّ الأمر مكافأة بعد.</p>';
+  return `
+    <section class="panel tank ${t.full ? 'full' : ''}">
+      <div class="row between"><h2>خزّان الحلقة</h2><span class="small">${left <= 1 ? 'آخر يوم · الجمعة' : `باقي ${count(left, 'يوم', 'يومان', 'أيام', 'يومًا')}`}</span></div>
+      <div class="tank-wrap">
+        ${tankSVG(t)}
+        <div class="tank-side">
+          <div class="tank-pct">${t.cap ? AR(pctFill) + '٪' : '—'}</div>
+          ${t.full ? `<p class="tank-full">امتلأ الخزّان! ${fam.reward ? 'استحققتم المكافأة 🎉' : 'بارك الله فيكم 🎉'}</p>`
+            : t.cap ? `<p class="small" style="margin:0">يمتلئ حين يحقّق كل فرد هدفه هذا الأسبوع.</p>`
+            : '<p class="small" style="margin:0">يبدأ بالامتلاء حين يضع أفراد الحلقة أهدافهم.</p>'}
+          <ul class="tank-legend">${t.parts.map(x => `<li><i style="background:${x.p.color}"></i><span>${esc(x.p.name)}</span>
+            <b>${x.hasGoal ? AR(Math.round(x.base)) + '٪' : '—'}${x.bonus ? ` <small>+${AR(x.bonus)}٪ تسميع لغيره</small>` : ''}</b></li>`).join('')}</ul>
+        </div>
+      </div>
+      ${reward}
+      ${owner ? `<form id="rewardForm" class="row" style="margin-top:8px">
+        <label for="rw">مكافأة الأسبوع</label>
+        <input type="text" id="rw" maxlength="80" value="${esc(fam.reward || '')}" placeholder="مثل: عشاء في المطعم" style="flex:1;min-width:10em">
+        <button class="btn small" type="submit">${fam.reward ? 'تعديل' : 'حفظ'}</button></form>` : ''}
+      <p class="small" style="margin:10px 0 0">نصيب كل فرد نسبة ما حقّقه من هدفه (إلى ١٥٠٪)، ومن سمّع لغيره زاد ٥٪ لكل تسميع.</p>
+    </section>`;
+}
+function bindTank(){
+  const f = $('#rewardForm'); if (!f) return;
+  f.onsubmit = async e => {
+    e.preventDefault();
+    try { await Cloud.setReward($('#rw').value.trim()); } catch(x){ alert('تعذّر الحفظ. تأكّد من الاتصال.'); }
+  };
+}
+// سطر مختصر في الرئيسية
+function tankLine(){
+  if (!Cloud.st.fid) return '';
+  const t = familyTank(); if (!t.cap) return '';
+  return `<a class="tankline ${t.full ? 'full' : ''}" href="#/"><span>خزّان الحلقة</span><span class="qbar"><i style="width:${Math.min(100, t.fill * 100)}%"></i></span><b>${AR(Math.round(Math.min(1, t.fill) * 100))}٪</b></a>`;
 }
 
 /* ================= الخريطة ================= */

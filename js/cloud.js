@@ -25,7 +25,7 @@ const Cloud = (() => {
   const code = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALPHA[b % ALPHA.length]).join('');
   const FV = () => firebase.firestore.FieldValue;
 
-  let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null;
+  let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null, unsubFam = null;
   const st = {ok: false, user: null, fid: null, family: null, error: null, requests: []};
   const subs = new Set();
   const emit = () => subs.forEach(f => { try { f(st); } catch(e){} });
@@ -58,6 +58,9 @@ const Cloud = (() => {
     const fam = await db.doc(`families/${fid}`).get();
     if (!fam.exists){ st.fid = null; return; }
     st.fid = fid; st.family = {id: fid, ...fam.data()};
+    // المكافأة وغيرها قد يغيّرها وليّ الأمر من جهازه
+    if (unsubFam) unsubFam();
+    unsubFam = db.doc(`families/${fid}`).onSnapshot(s => { if (s.exists){ st.family = {id: fid, ...s.data()}; emit(); } }, () => {});
     Store.DB.fid = fid; Store.save();
     await uploadLocal();
     if (unsubMembers) unsubMembers();
@@ -98,6 +101,7 @@ const Cloud = (() => {
   function detach(){
     if (unsubMembers){ unsubMembers(); unsubMembers = null; }
     if (unsubReq){ unsubReq(); unsubReq = null; }
+    if (unsubFam){ unsubFam(); unsubFam = null; }
     st.fid = null; st.family = null; st.requests = [];
   }
 
@@ -144,6 +148,15 @@ const Cloud = (() => {
       await pushPub(ref.id, d.sess);
     }
   }
+  function weekHist(p, d){
+    const hst = {...(d.wkp || {})};
+    if (mine(p)){
+      const c = Stats.contribution(p.id, true), w = Stats.weekStart(Store.today());
+      if (c.hasGoal || c.bonus) hst[w] = Math.round(c.pct);
+      Object.keys(hst).map(Number).sort((a, b) => b - a).slice(12).forEach(k => delete hst[k]);
+    }
+    return hst;
+  }
   function progFor(p, d){
     const w = Stats.week(p.id), r = d.prog;
     if (mine(p) || !r || r.w !== w.w) return w;
@@ -152,7 +165,7 @@ const Cloud = (() => {
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
     return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now(),
-            goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}};
+            goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}, wkp: weekHist(p, d)};
   }
 
   /* ---------- رفع التعديلات ---------- */
@@ -174,7 +187,8 @@ const Cloud = (() => {
     const m = Stats.memorized(id);
     const doc = {fid: st.fid, mem: {l: m.letters, w: m.words, a: m.ayat, p: +m.pages.toFixed(3), j: +m.juz.toFixed(3)}, up: Date.now()};
     const prog = Stats.week(id), gs = Stats.goalStatus(id, prog);
-    doc.goal = gs ? {w: prog.w, met: !!gs.met} : null;   // للوحة: هل حقّق هدف الأسبوع؟
+    const c = Stats.contribution(id, true);
+    doc.goal = gs ? {w: prog.w, met: !!gs.met, pct: Math.round(c.pct), has: c.hasGoal} : null;   // للوحة: الهدف ونصيب الخزّان
     if (initialSessions){
       const t = {s: 0, w: 0, l: 0, p: 0};
       initialSessions.forEach(s => { t.s++; t.w += s.words || 0; t.l += s.letters || 0; t.p += s.pages || 0; });
@@ -238,6 +252,11 @@ const Cloud = (() => {
     return ref.id;
   }
 
+  // وليّ الأمر: مكافأة الأسبوع
+  async function setReward(reward){
+    await db.doc(`families/${st.fid}`).update({reward: reward.slice(0, 80), rewardAt: Date.now()});
+  }
+
   // «هذا أنا»: ربط فرد غير مربوط بهذا الجهاز
   async function claimMember(id){
     await db.doc(`families/${st.fid}/members/${id}`).update({uids: [user.uid]});
@@ -293,7 +312,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
+    setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };

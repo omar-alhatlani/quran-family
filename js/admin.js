@@ -54,15 +54,21 @@
     unsubs.push(db.collection('pub').onSnapshot(s => {
       const m = {l: 0, w: 0, a: 0, p: 0, j: 0}, t = {s: 0, w: 0, l: 0, p: 0};
       const wk = today() - ((today() + 5) % 7);   // بداية الأسبوع (السبت)
-      let gall = 0, gmet = 0;
+      let gall = 0, gmet = 0; const fams = {};
       s.forEach(d => {
         const x = d.data();
         if (x.goal){ gall++; if (x.goal.w === wk && x.goal.met) gmet++; }
+        // خزّان كل عائلة: ١٠٠٪ لكل فرد له هدف، ويُجمع نصيب الأفراد هذا الأسبوع
+        if (x.goal && x.goal.w === wk){ const t = fams[x.fid] || (fams[x.fid] = {cap: 0, sum: 0}); if (x.goal.has) t.cap += 100; t.sum += x.goal.pct || 0; }
         if (x.mem) for (const k in m) m[k] += x.mem[k] || 0;
         if (x.tot) for (const k in t) t[k] += x.tot[k] || 0;
       });
       setNum('members', s.size);
       setNum('gmet', gmet); setNum('gall', gall);
+      const tk = Object.values(fams).filter(t => t.cap);
+      setNum('tfull', tk.filter(t => t.sum >= t.cap).length);
+      setNum('tavg', tk.length ? Math.round(tk.reduce((s, t) => s + Math.min(1, t.sum / t.cap), 0) / tk.length * 100) : 0);
+      document.getElementById('tfullU').textContent = tk.length ? `من ${fmt0.format(tk.length)} عائلة لها خزّان` : 'عائلة';
       document.getElementById('gmetU').textContent = gall ? `من ${fmt0.format(gall)} لديهم أهداف` : 'فرد';
       setNum('j', m.j, true); setNum('p', m.p, true); setNum('a', m.a); setNum('w', m.w); setNum('l', m.l);
       setNum('t.s', t.s); setNum('t.w', t.w); setNum('t.l', t.l); setNum('t.p', t.p, true);
