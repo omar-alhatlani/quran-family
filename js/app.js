@@ -224,9 +224,9 @@ function viewHome(pid){
         <h2>ابدأ برسم خريطتك</h2>
         <p>علّم ما تحفظه من القرآن الآن، بالجزء أو بالسورة أو بالوجه، ليعرف البرنامج ماذا يراجع معك.</p>
         <a class="btn primary" href="#/map">ارسم خريطتي</a>
-      </section>` : '') : wirdCard(pid, edit, sg)}
+      </section>` : '') : wirdCard(pid, edit, sg, reciteMode(pid))}
     <nav class="actions">
-      ${edit ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
+      ${Cloud.canRecite(p) ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
       ${own && p.cloud ? `<a class="act" href="#/ask">${ICON_EAR}سمّعني</a>` : ''}
       ${!own && p.cloud && meId() ? `<a class="act" href="#/listen/new/${pid}">${ICON_EAR}سمّع له</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
@@ -406,27 +406,37 @@ function viewGoal(pid){
 
 /* ================= ورد المراجعة اليوم ================= */
 const tasmeeHref = (a, b) => `#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}`;
+const listenHref = (pid, a, b) => `#/listen/new/${pid}/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}`;
+// كيف يُفتح مقطع من ملف فرد: 'self' تسميع صوتي، 'listen' سمّع له، '' للاطّلاع فقط
+function reciteMode(pid){
+  const p = Store.profile(pid);
+  if (Cloud.canRecite(p)) return 'self';
+  return p && p.cloud && meId() && meId() !== pid ? 'listen' : '';
+}
+const segHref = (pid, mode, a, b) => mode === 'self' ? tasmeeHref(a, b) : listenHref(pid, a, b);
 function itemLabel(a, b){
   const s = Q.surahOf(a), x = Q.num[a], y = Q.num[b];
   if (x === 1 && y === s.count) return `سورة ${s.name} كاملة`;
   if (x === y) return `سورة ${s.name}: الآية ${AR(x)}`;
   return `سورة ${s.name}: من الآية ${AR(x)} إلى الآية ${AR(y)}`;
 }
-function wirdCard(pid, edit, sg){
-  const w = Stats.wird(pid, edit);
+function wirdCard(pid, edit, sg, mode){
+  const w = Stats.wird(pid, mode === 'self');
   if (!w || !w.items.length) return '';
   const ws = Stats.wirdStatus(pid, w);
-  const extra = ws.complete && edit && sg ? `<p class="small" style="margin:8px 0 0">مراجعة إضافية إن شئت: <a href="${tasmeeHref(sg.a, sg.b)}">${itemLabel(sg.a, sg.b)}</a></p>` : '';
+  const extra = ws.complete && mode === 'self' && sg ? `<p class="small" style="margin:8px 0 0">مراجعة إضافية إن شئت: <a href="${tasmeeHref(sg.a, sg.b)}">${itemLabel(sg.a, sg.b)}</a></p>` : '';
   return `
       <section class="panel today wird ${ws.complete ? 'met' : ''}">
         <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page')}</span></div>
         <ol class="wlist">${ws.items.map(x => `<li class="${x.done ? 'done' : ''}">
-          ${edit ? `<a href="${tasmeeHref(x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
+          ${mode ? `<a href="${segHref(pid, mode, x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
           <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span></li>`).join('')}</ol>
         <div class="gl"><span>التقدّم</span><b>${Q.dec(ws.done)} من ${unitTxt(ws.total, 'page')}</b></div>
         <div class="qbar ${ws.complete ? 'okb' : ''}"><i style="width:${pct(ws.done, ws.total)}%"></i></div>
         ${ws.complete ? '<p class="metmsg">أتممت ورد اليوم، بارك الله فيك.</p>' + extra
-          : edit ? `<p style="margin:10px 0 0"><a class="btn primary" href="${tasmeeHref(ws.next.a, ws.next.b)}">${ICON.mic} ${ws.done ? 'تابع الورد' : 'ابدأ الورد'}</a></p>` : ''}
+          : mode === 'self' ? `<p style="margin:10px 0 0"><a class="btn primary" href="${tasmeeHref(ws.next.a, ws.next.b)}">${ICON.mic} ${ws.done ? 'تابع الورد' : 'ابدأ الورد'}</a></p>`
+          : mode === 'listen' ? `<p style="margin:10px 0 0"><a class="btn primary" href="${listenHref(pid, ws.next.a, ws.next.b)}">${ICON_EAR} سمّع له وِرده</a></p>
+             <p class="small" style="margin:6px 0 0">اضغط أي مقطع لتسمّعه له؛ يقرأ هو وتعلّم أنت أخطاءه.</p>` : ''}
       </section>`;
 }
 
@@ -641,7 +651,7 @@ function listenLine(pid){
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 function viewMap(pid){
   setTop('خريطة الحفظ', '#/home');
-  const edit = Cloud.canEdit(Store.profile(pid));
+  const edit = Cloud.canEdit(Store.profile(pid)), rmode = reciteMode(pid);
   const today = Store.today(), m = Store.mem(pid);
   const byJuz = Array.from({length: 31}, () => []);
   for (let pg = 1; pg <= Q.PAGES; pg++) byJuz[Q.juz[Q.pageFirst[pg]]].push(pg);
@@ -724,7 +734,7 @@ function viewMap(pid){
         return `<li data-a="${a}" data-b="${b}"><span><span class="q">${Q.rangeLabel(a, b)}</span>
           <span class="small"> · ${n === 0 ? 'غير محفوظ' : all ? 'محفوظ' : `محفوظ ${AR(n)} من ${AR(b - a + 1)}`}${last >= 0 ? ' · سُمِّع ' + ago(Date.now() - (today - last) * 864e5) : ''}</span></span>
           ${edit ? `<span class="row"><button class="btn small" type="button" data-act="t">${all ? 'إلغاء' : 'محفوظ'}</button>
-          <a class="btn small primary" href="#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}">سمّع</a></span>` : ''}</li>`;
+          ${rmode ? `<a class="btn small primary" href="${segHref(pid, rmode, a, b)}">${rmode === 'self' ? 'سمّع' : 'سمّع له'}</a>` : ''}</span>` : ''}</li>`;
       }).join('')}</ul>`;
     if (edit) $$('#sheet li').forEach(li => li.querySelector('[data-act=t]').onclick = () => {
       const a = +li.dataset.a, b = +li.dataset.b; let n = 0; for (let i = a; i <= b; i++) n += m[i];
@@ -735,7 +745,11 @@ function viewMap(pid){
 
 /* ================= التسميع ================= */
 function viewTasmee(pid, [s, a, b]){
-  if (!Cloud.canEdit(Store.profile(pid))) return location.replace('#/home');
+  // التسميع الصوتي باسم الفرد لصاحبه (أو لوليّ الأمر لفرد بلا جوال)؛ ولغيرهما «سمّع له»
+  if (!Cloud.canRecite(Store.profile(pid))){
+    const m = reciteMode(pid);
+    return location.replace(m === 'listen' && s ? `#/listen/new/${pid}/${s}/${a || 1}/${b || a || 1}` : '#/home');
+  }
   // المقطع الافتراضي: المقترح، ثم آخر تسميع، ثم الملك ١–٥
   if (!s){
     const sg = Stats.suggest(pid), last = Store.data(pid).sess.slice(-1)[0];
@@ -944,7 +958,7 @@ function applySession(pid, A, B, W, prev){
 /* ================= التقرير ================= */
 let repDays = 7;
 function viewReport(pid){
-  const p = Store.profile(pid);
+  const p = Store.profile(pid), rm = reciteMode(pid);
   Cloud.loadSessions(pid).then(ch => { if (ch && location.hash === '#/report') viewReport(pid); }).catch(() => {});
   setTop('تقرير ' + p.name, '#/home');
   const m = Stats.memorized(pid), pr = Stats.period(pid, repDays), cov = Stats.coverage(pid), wk = Stats.weekly(pid), weak = Stats.weakSpots(pid);
@@ -995,7 +1009,7 @@ function viewReport(pid){
     <section class="panel">
       <h2>مواضع تحتاج انتباهًا</h2>
       ${weak.length ? `<ul class="list">${weak.map(x => `<li><span><span class="q">${x.word}</span> <span class="small">${Q.label(x.i)} · أخطأت فيها ${count(x.c, 'مرة', 'مرتين', 'مرات', 'مرة')}</span></span>
-        <a class="btn small primary" href="#/tasmee/${Q.sur[x.i]}/${Q.num[x.i]}/${Q.num[x.i]}">سمّع الآية</a></li>`).join('')}</ul>`
+        ${rm ? `<a class="btn small primary" href="${segHref(pid, rm, x.i, x.i)}">${rm === 'self' ? 'سمّع الآية' : 'سمّع له الآية'}</a>` : ''}</li>`).join('')}</ul>`
         : '<p class="small">لا مواضع ضعف حتى الآن. تظهر هنا الكلمات التي تتكرّر أخطاؤك فيها، وتختفي حين تقرؤها صحيحة.</p>'}
     </section>`;
   $$('.seg button').forEach(bt => bt.onclick = () => { repDays = +bt.dataset.d; viewReport(pid); });

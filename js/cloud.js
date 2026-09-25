@@ -92,6 +92,8 @@ const Cloud = (() => {
   // الأفراد الذين يملكهم هذا الجهاز
   const mine = p => !!(p && (!p.cloud || (user && Array.isArray(p.uids) && p.uids.includes(user.uid))));
   const canEdit = p => !!(p && (mine(p) || (p.cloud && isOwner())));
+  // التسميع الصوتي باسم الفرد: لصاحبه، أو لوليّ الأمر إن كان الفرد بلا جوال (غير مربوط بجهاز)
+  const canRecite = p => !!(p && (mine(p) || (p.cloud && isOwner() && Array.isArray(p.uids) && !p.uids.length)));
   function detach(){
     if (unsubMembers){ unsubMembers(); unsubMembers = null; }
     if (unsubReq){ unsubReq(); unsubReq = null; }
@@ -281,7 +283,7 @@ const Cloud = (() => {
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
     sendRequest, setStatus, submitResult, onPeerDone: null,
-    googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, isOwner, createFamily, joinFamily, loadSessions,
+    googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
 })();
