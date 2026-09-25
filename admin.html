@@ -70,6 +70,13 @@ h2::after{content:"";flex:1;height:1px;background:var(--line)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{font-family:var(--num);letter-spacing:2px;direction:ltr;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:3px 8px;background:var(--panel2);cursor:pointer;color:var(--ink)}
 .muted{color:var(--muted);font-size:13px}
+.fams td,.fams th{font-size:15px}
+.fams td.v{font-size:15px;font-family:var(--ui)}
+.st-on{color:var(--live)} .st-off{color:var(--warn);font-weight:700}
+.fams .btn{margin-inline-start:6px}
+.btn.danger{color:#ff9b8a;border-color:#5a2a24}
+.invc{display:inline-flex;align-items:center;gap:4px}
+.invc .x{font:inherit;background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
 .gate{max-width:420px;margin:12vh auto 0;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px 22px}
 .gate img{width:64px;height:64px;border-radius:14px}
 .gate h1{font-size:22px;margin:12px 0 6px}
@@ -143,8 +150,15 @@ footer{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}
         <span class="code" id="invCode"></span>
         <button class="btn small" id="copyInv" type="button">نسخ رسالة الدعوة</button>
       </div>
-      <div><div class="muted" style="margin-bottom:6px">دعوات لم تُستعمل بعد (اضغط الرمز لنسخ رسالته):</div><div class="chips" id="invList"></div></div>
+      <div><div class="muted" style="margin-bottom:6px">دعوات لم تُستعمل بعد (اضغط الرمز لنسخ رسالته، و× لإلغائه):</div><div class="chips" id="invList"></div></div>
     </div>
+    <h2>إدارة العائلات <span style="font-weight:400">(بلا أسماء)</span></h2>
+    <div class="grid3 fams"><table>
+      <thead><tr><th>الحلقة</th><th>أُنشئت</th><th>الأفراد</th><th>آخر نشاط</th><th>الحالة</th><th></th></tr></thead>
+      <tbody id="famRows"><tr><td colspan="6" class="muted">…</td></tr></tbody>
+    </table></div>
+    <p class="muted" style="margin-top:8px">الإيقاف يمنع أي تسميع أو تعديل في الحلقة مع بقاء بياناتها، ويُرفع متى شئت. الحذف نهائي: يحذف الأفراد وجلساتهم وطلباتهم وأرقامهم.</p>
+
     <footer>الأرقام تتحدّث لحظيًّا عند كل تسميع أو تعديل في أي عائلة. لا تظهر هنا أسماء ولا تفاصيل.</footer>
   </div>
 </div>
@@ -152,6 +166,6 @@ footer{margin-top:28px;color:var(--muted);font-size:12px;text-align:center}
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
-<script src="js/admin.js?v=4"></script>
+<script src="js/admin.js?v=5"></script>
 </body>
 </html>

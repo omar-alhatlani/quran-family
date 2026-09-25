@@ -20,7 +20,7 @@
   firebase.initializeApp(CONFIG);
   const auth = firebase.auth(), db = firebase.firestore();
   const unsubs = [];
-  let lastUpdate = 0;
+  let lastUpdate = 0, famDocs = [], pubDocs = [];
 
   /* ---------- عرض رقم مع عدّ تدريجي وومضة ---------- */
   const shown = {};
@@ -50,8 +50,9 @@
   /* ---------- الاشتراكات اللحظية ---------- */
   function watch(){
     const onErr = e => { $('#live').classList.add('off'); $('#liveT').textContent = e.code === 'permission-denied' ? 'لا صلاحية' : 'انقطع الاتصال'; };
-    unsubs.push(db.collection('families').onSnapshot(s => { $('#live').classList.remove('off'); setNum('families', s.size); }, onErr));
+    unsubs.push(db.collection('families').onSnapshot(s => { $('#live').classList.remove('off'); setNum('families', s.size); famDocs = s.docs; renderFams(); }, onErr));
     unsubs.push(db.collection('pub').onSnapshot(s => {
+      pubDocs = s.docs; renderFams();
       const m = {l: 0, w: 0, a: 0, p: 0, j: 0}, t = {s: 0, w: 0, l: 0, p: 0};
       const wk = today() - ((today() + 5) % 7);   // بداية الأسبوع (السبت)
       let gall = 0, gmet = 0; const fams = {};
@@ -86,9 +87,56 @@
     unsubs.push(db.collection('invites').onSnapshot(s => {
       const unused = s.docs.filter(d => !d.data().used).sort((a, b) => b.data().created - a.data().created);
       $('#invCounts').textContent = `${fmt0.format(unused.length)} غير مستعملة · ${fmt0.format(s.size - unused.length)} مستعملة`;
-      $('#invList').innerHTML = unused.map(d => `<button class="chip" type="button" data-c="${d.id}">${d.id}</button>`).join('') || '<span class="muted">لا توجد.</span>';
+      $('#invList').innerHTML = unused.map(d => `<span class="invc"><button class="chip" type="button" data-c="${d.id}">${d.id}</button><button class="x" type="button" data-del="${d.id}" aria-label="إلغاء الدعوة ${d.id}">×</button></span>`).join('') || '<span class="muted">لا توجد.</span>';
       document.querySelectorAll('#invList .chip').forEach(b => b.onclick = () => copyInvite(b.dataset.c, b));
+      document.querySelectorAll('#invList [data-del]').forEach(b => b.onclick = () => {
+        if (confirm(`إلغاء الدعوة ${b.dataset.del}؟ لن يستطيع أحد استعمالها بعد ذلك.`)) db.doc(`invites/${b.dataset.del}`).delete().catch(e => alert('تعذّر: ' + e.code));
+      });
     }, onErr));
+  }
+
+  /* ---------- إدارة العائلات (بلا أسماء) ---------- */
+  const dfmt = t => t ? new Date(t).toLocaleDateString('ar-SA-u-ca-gregory', {day: 'numeric', month: 'short', year: 'numeric'}) : '—';
+  const agoTxt = t => { if (!t) return '—'; const d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'اليوم' : d === 1 ? 'أمس' : `قبل ${fmt0.format(d)} يومًا`; };
+  function renderFams(){
+    const box = document.getElementById('famRows'); if (!box) return;
+    const sorted = [...famDocs].sort((a, b) => (a.data().created || 0) - (b.data().created || 0));
+    if (!sorted.length){ box.innerHTML = '<tr><td colspan="6" class="muted">لا عائلات بعد.</td></tr>'; return; }
+    box.innerHTML = sorted.map((d, k) => {
+      const f = d.data(), ps = pubDocs.filter(p => p.data().fid === d.id);
+      const last = Math.max(0, ...ps.map(p => p.data().up || 0));
+      return `<tr><td>الحلقة ${fmt0.format(k + 1)}</td><td>${dfmt(f.created)}</td><td>${fmt0.format(ps.length)}</td><td>${agoTxt(last)}</td>
+        <td class="${f.suspended ? 'st-off' : 'st-on'}">${f.suspended ? 'موقوفة' : 'نشطة'}</td>
+        <td style="white-space:nowrap"><button class="btn small" type="button" data-sus="${d.id}">${f.suspended ? 'تفعيل' : 'إيقاف'}</button>
+          <button class="btn small danger" type="button" data-rm="${d.id}" data-n="${k + 1}">حذف</button></td></tr>`;
+    }).join('');
+    box.querySelectorAll('[data-sus]').forEach(b => b.onclick = async () => {
+      const ref = db.doc(`families/${b.dataset.sus}`), cur = famDocs.find(x => x.id === b.dataset.sus).data().suspended;
+      if (!cur && !confirm('إيقاف الحلقة؟ لن يستطيع أفرادها التسميع أو التعديل حتى تفعّلها.')) return;
+      try { await ref.update({suspended: !cur, suspendedAt: Date.now()}); } catch(e){ alert('تعذّر: ' + e.code); }
+    });
+    box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => deleteFamily(b.dataset.rm, b.dataset.n, b));
+  }
+  // حذف نهائي: الجلسات والأفراد والطلبات والصلاحيات وأرقام اللوحة والرمز، ثم العائلة
+  async function deleteFamily(fid, n, btn){
+    const ok = prompt(`حذف «الحلقة ${n}» نهائيًّا بكل أفرادها وجلساتهم؟ لا يمكن التراجع.\nاكتب كلمة: حذف`);
+    if ((ok || '').trim() !== 'حذف') return;
+    btn.disabled = true; btn.textContent = 'جارٍ الحذف…';
+    const delAll = async docs => { for (let i = 0; i < docs.length; i += 400){ const b = db.batch(); docs.slice(i, i + 400).forEach(d => b.delete(d.ref)); await b.commit(); } };
+    try {
+      const base = db.doc(`families/${fid}`);
+      const fam = (await base.get()).data() || {};
+      const members = await base.collection('members').get();
+      for (const m of members.docs) await delAll((await m.ref.collection('sessions').get()).docs);
+      await delAll(members.docs);
+      await delAll((await base.collection('requests').get()).docs);
+      const access = await base.collection('access').get();
+      await delAll(access.docs.map(a => ({ref: db.doc(`users/${a.id}`)})));
+      await delAll(access.docs);
+      await delAll((await db.collection('pub').where('fid', '==', fid).get()).docs);
+      if (fam.joinCode) await db.doc(`joinCodes/${fam.joinCode}`).delete().catch(() => {});
+      await base.delete();
+    } catch(e){ alert('تعذّر إكمال الحذف: ' + (e.code || e.message) + '\nأعد المحاولة؛ يكمل من حيث توقّف.'); btn.disabled = false; btn.textContent = 'حذف'; }
   }
 
   /* ---------- الدعوات ---------- */

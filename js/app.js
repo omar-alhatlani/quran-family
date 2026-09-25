@@ -107,7 +107,7 @@ function viewProfiles(){
     ${familyPanel()}
     <details class="panel" ${ps.length || Cloud.st.ok ? '' : 'open'}><summary>إضافة فرد على هذا الجهاز</summary>${addForm('addForm', 'الاسم', 'إضافة')}</details>`;
   }
-  app.innerHTML = (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
+  app.innerHTML = suspendedNote() + (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
 ${inFam && !isOwner() ? '' : `
     <section class="panel">
       <h3>${inFam ? 'نسخة احتياطية للحلقة كاملة' : 'النسخة الاحتياطية'}</h3>
@@ -187,6 +187,9 @@ const errText = e => ERR[e && (e.message in ERR ? e.message : e.code)] || 'حد�
 const isOwner = () => !!(Cloud.st.family && Cloud.st.user && Cloud.st.family.owner === Cloud.st.user.uid);
 const joinLink = c => location.origin + location.pathname + '?j=' + c;
 
+// الحلقة الموقوفة من المدير: تُعرض بياناتها ولا يُسجَّل فيها شيء
+const suspendedNote = () => Cloud.st.family && Cloud.st.family.suspended
+  ? '<p class="warn">الحلقة موقوفة مؤقتًا من مدير البرنامج: تُعرض بياناتكم، ولا يُسجَّل تسميع أو تعديل حتى تُفعَّل. للاستفسار راسلوا o.alhatlani@gmail.com</p>' : '';
 function familyPanel(){
   const st = Cloud.st;
   if (!st.ok) return '';
@@ -270,6 +273,7 @@ function viewHome(pid){
       <span><b>${Q.dec(m.juz)}</b> جزء</span><span><b>${Q.dec(m.pages)}</b> وجه</span><span><b>${AR(m.ayat)}</b> آية</span><span><b>${Q.dec(m.pct)}٪</b> من القرآن</span>
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
+    ${p.cloud ? suspendedNote() : ''}
     ${own ? peerBanner() : ''}
     ${own ? majlisCard() : ''}
     ${!m.words ? (edit ? `
