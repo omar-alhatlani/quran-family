@@ -214,18 +214,12 @@ function viewHome(pid){
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
     ${goalPanel(pid, edit)}
-    ${!edit ? '' : !m.words ? `
+    ${!m.words ? (edit ? `
       <section class="panel today">
         <h2>ابدأ برسم خريطتك</h2>
         <p>علّم ما تحفظه من القرآن الآن، بالجزء أو بالسورة أو بالوجه، ليعرف البرنامج ماذا يراجع معك.</p>
         <a class="btn primary" href="#/map">ارسم خريطتي</a>
-      </section>` : sg ? `
-      <section class="panel today">
-        <div class="row between"><h2>مراجعة اليوم</h2><span class="chip ${sg.state}">${STATE_TXT[sg.state]}</span></div>
-        <div class="t">${Q.rangeLabel(sg.a, sg.b)}</div>
-        <p class="small" style="margin:0 0 10px">الوجه ${AR(sg.pg)} · ${count(sg.b - sg.a + 1, 'آية واحدة', 'آيتان', 'آيات', 'آية')}</p>
-        <a class="btn primary" href="#/tasmee/${Q.sur[sg.a]}/${Q.num[sg.a]}/${Q.num[sg.b]}">${ICON.mic} سمّع الآن</a>
-      </section>` : ''}
+      </section>` : '') : wirdCard(pid, edit, sg)}
     <nav class="actions">
       ${edit ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
@@ -400,6 +394,32 @@ function viewGoal(pid){
     d.nl = d.nl || {};
     Store.touch(pid); location.hash = '#/home';
   };
+}
+
+/* ================= ورد المراجعة اليوم ================= */
+const tasmeeHref = (a, b) => `#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}`;
+function itemLabel(a, b){
+  const s = Q.surahOf(a), x = Q.num[a], y = Q.num[b];
+  if (x === 1 && y === s.count) return `سورة ${s.name} كاملة`;
+  if (x === y) return `سورة ${s.name}: الآية ${AR(x)}`;
+  return `سورة ${s.name}: من الآية ${AR(x)} إلى الآية ${AR(y)}`;
+}
+function wirdCard(pid, edit, sg){
+  const w = Stats.wird(pid, edit);
+  if (!w || !w.items.length) return '';
+  const ws = Stats.wirdStatus(pid, w);
+  const extra = ws.complete && edit && sg ? `<p class="small" style="margin:8px 0 0">مراجعة إضافية إن شئت: <a href="${tasmeeHref(sg.a, sg.b)}">${itemLabel(sg.a, sg.b)}</a></p>` : '';
+  return `
+      <section class="panel today wird ${ws.complete ? 'met' : ''}">
+        <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page')}</span></div>
+        <ol class="wlist">${ws.items.map(x => `<li class="${x.done ? 'done' : ''}">
+          ${edit ? `<a href="${tasmeeHref(x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
+          <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span></li>`).join('')}</ol>
+        <div class="gl"><span>التقدّم</span><b>${Q.dec(ws.done)} من ${unitTxt(ws.total, 'page')}</b></div>
+        <div class="qbar ${ws.complete ? 'okb' : ''}"><i style="width:${pct(ws.done, ws.total)}%"></i></div>
+        ${ws.complete ? '<p class="metmsg">أتممت ورد اليوم، بارك الله فيك.</p>' + extra
+          : edit ? `<p style="margin:10px 0 0"><a class="btn primary" href="${tasmeeHref(ws.next.a, ws.next.b)}">${ICON.mic} ${ws.done ? 'تابع الورد' : 'ابدأ الورد'}</a></p>` : ''}
+      </section>`;
 }
 
 /* ================= الخريطة ================= */
@@ -636,12 +656,15 @@ function viewTasmee(pid, [s, a, b]){
     const errs = W.map((w, k) => ({w, k, st: S.marks[k]})).filter(x => x.st && (x.st.st === 'wrong' || x.st.st === 'skip'));
     const newAyat = saved.reached.filter(i => !Store.mem(pid)[i]);
     const nextA = b + 1 <= sur.count ? b + 1 : 0;
+    const wr = Stats.wird(pid, false), ws = wr && Stats.wirdStatus(pid, wr);
+    const inWird = ws && ws.items.some(x => x.a <= B && x.b >= A);
+    const wirdNext = inWird && ws.next, wirdDone = inWird && ws.complete;
     const box = $('#result'); box.hidden = false;
     box.innerHTML = `
       <div class="row between">
         <div><div class="score">${AR(c.pct)}٪</div><div class="small">نسبة الكلمات الصحيحة · حُفظت النتيجة</div></div>
         <div class="row"><button class="btn" id="again" type="button">أعد المقطع</button>
-        ${nextA ? `<a class="btn primary" href="#/tasmee/${sur.n}/${nextA}/${Math.min(sur.count, nextA + (b - a))}">المقطع التالي</a>` : `<a class="btn primary" href="#/home">الرئيسية</a>`}</div>
+        ${wirdNext ? `<a class="btn primary" href="${tasmeeHref(wirdNext.a, wirdNext.b)}">التالي في الورد</a>` : wirdDone ? `<a class="btn primary" href="#/home">أتممت الورد ✓</a>` : nextA ? `<a class="btn primary" href="#/tasmee/${sur.n}/${nextA}/${Math.min(sur.count, nextA + (b - a))}">المقطع التالي</a>` : `<a class="btn primary" href="#/home">الرئيسية</a>`}</div>
       </div>
       <div class="stats">
         <div class="stat okc"><b>${AR(c.ok)}</b><span>صحيحة</span></div>

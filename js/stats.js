@@ -139,5 +139,71 @@ const Stats = (() => {
             perWeek: (1 - frac) * tp / weeksLeft, due: big.due};
   }
 
-  return {weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
+  /* ---------- ورد المراجعة اليوم ---------- */
+  const ayahPages = i => Q.words[i] / Q.pageWords[Q.page[i]];
+  // مقدار اليوم بالأوجه: نصيب اليوم من هدف مراجعة الأسبوع (÷٧)، ويزيد عند التأخّر إلى ضعفه لا أكثر،
+  // فلا يُحمَّل يومٌ واحد هدفَ الأسبوع كلّه. بلا هدف: وجهان.
+  function dailyQuota(id){
+    const d = Store.data(id), m = memorized(id);
+    if (!m.pages) return 0;
+    let q = 2;
+    if (d.goal && d.goal.rc){
+      const w = week(id), revT = Math.max(1, Math.round(m.pages / d.goal.rc * 2) / 2);
+      const left = Math.max(1, w.w + 7 - Store.today());
+      const base = revT / 7, need = (revT - w.rp) / left;
+      q = need <= 0 ? base : Math.min(Math.max(base, need), 2 * base);
+    }
+    return Math.min(Math.round(q * 2) / 2 || 0.5, m.pages);
+  }
+  // الأوجه الضعيفة أولًا، ثم الأقدم تسميعًا (ولم يُسمَّع بعدُ قبل الجميع)، ثم ترتيب المصحف؛
+  // فتدور المراجعة على المحفوظ كله بالتتابع
+  function makeWird(id, quota){
+    const m = Store.mem(id), rev = Store.data(id).rev, today = Store.today(), pages = [];
+    for (let pg = 1; pg <= Q.PAGES; pg++){
+      let frac = 0, last = Infinity, all = true, weak = false;
+      for (let i = Q.pageFirst[pg]; i <= Q.pageLast[pg]; i++) if (m[i]){
+        frac += ayahPages(i);
+        const r = rev[i]; last = Math.min(last, r ? r[0] : -1);
+        if (!r || r[0] !== today) all = false;
+        if (r && r[1] >= 2) weak = true;
+      }
+      if (frac > 0 && !all) pages.push({pg, frac, last, weak});
+    }
+    pages.sort((x, y) => (y.weak - x.weak) || (x.last - y.last) || (x.pg - y.pg));
+    const pick = []; let sum = 0;
+    for (const p of pages){ if (sum >= quota - 0.1) break; pick.push(p.pg); sum += p.frac; }
+    const idx = [];
+    pick.forEach(pg => { for (let i = Q.pageFirst[pg]; i <= Q.pageLast[pg]; i++) if (m[i]) idx.push(i); });
+    idx.sort((a, b) => a - b);
+    const items = [];
+    idx.forEach(i => { const L = items[items.length - 1]; if (L && L[1] === i - 1 && Q.sur[i] === Q.sur[L[0]]) L[1] = i; else items.push([i, i]); });
+    return items;
+  }
+  // ورد اليوم: يُنشأ مرة في اليوم ويبقى ثابتًا (create لصاحب الملف فقط)
+  function wird(id, create){
+    const d = Store.data(id), t = Store.today(), m = Store.mem(id);
+    if (d.wird && d.wird.d === t){
+      const items = d.wird.items.filter(([a, b]) => { for (let i = a; i <= b; i++) if (!m[i]) return false; return true; });
+      return {...d.wird, items};
+    }
+    if (!create) return null;
+    const q = dailyQuota(id); if (!q) return null;
+    d.wird = {d: t, q, items: makeWird(id, q)};
+    Store.touch(id);
+    return d.wird;
+  }
+  // حالة الورد: كل مقطع تمّ إذا سُمِّعت كل آياته اليوم
+  function wirdStatus(id, w){
+    const rev = Store.data(id).rev, t = Store.today();
+    let total = 0, done = 0;
+    const items = w.items.map(([a, b]) => {
+      let p = 0, ok = true;
+      for (let i = a; i <= b; i++){ p += ayahPages(i); if (!rev[i] || rev[i][0] !== t) ok = false; }
+      total += p; if (ok) done += p;
+      return {a, b, pages: p, done: ok};
+    });
+    return {items, total, done, next: items.find(x => !x.done) || null, complete: items.length > 0 && items.every(x => x.done)};
+  }
+
+  return {dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
 })();

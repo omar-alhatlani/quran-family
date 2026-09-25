@@ -206,3 +206,12 @@ details summary{cursor:pointer;font-weight:600}
 .gline{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 .gline.ok{color:var(--fresh);font-weight:600}
 input[type=number],input[type=date]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+
+/* ورد المراجعة */
+.wlist{margin:10px 0 4px;padding-inline-start:22px;display:grid;gap:6px}
+.wlist li{font-size:15px}
+.wlist li a{color:var(--ink);text-decoration:none;border-bottom:1px dashed var(--accent)}
+.wlist li.done a,.wlist li.done span:first-child{color:var(--muted);text-decoration:line-through;border:0}
+.wlist .wk{color:var(--fresh);font-weight:700;margin-inline-start:6px}
+.wird .gl{display:flex;justify-content:space-between;margin-top:10px;font-size:14px}
+.wird.met{border-color:var(--fresh)}

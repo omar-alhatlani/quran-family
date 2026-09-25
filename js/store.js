@@ -79,12 +79,12 @@ const Store = (() => {
       if (DB.cur === oldId) DB.cur = newId; save();
     },
     // نسخة السحابة أحدث: تحلّ محلّ المحلية
-    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog}){
+    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog, wird}){
       let p = DB.profiles.find(x => x.id === id);
       if (!p){ p = {id, name, color, created: Date.now()}; DB.profiles.push(p); }
       p.name = name; p.color = color; p.cloud = true; p.uids = Array.isArray(uids) ? uids : null;
       const d = data(id);
-      if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null}); delete memCache[id]; }
+      if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null, wird: wird || null}); delete memCache[id]; }
       save();
     },
     // جلسات من السحابة تُدمج بالمعرّف
