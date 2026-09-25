@@ -424,13 +424,15 @@ function wirdCard(pid, edit, sg, mode){
   const w = Stats.wird(pid, mode === 'self');
   if (!w || !w.items.length) return '';
   const ws = Stats.wirdStatus(pid, w);
+  const waiting = (Cloud.st.requests || []).filter(r => r.from === pid && r.status === 'done' && !r.applied);
+  ws.items.forEach(x => { x.wait = !x.done && waiting.some(r => r.a <= x.a && r.b >= x.b); });
   const extra = ws.complete && mode === 'self' && sg ? `<p class="small" style="margin:8px 0 0">مراجعة إضافية إن شئت: <a href="${tasmeeHref(sg.a, sg.b)}">${itemLabel(sg.a, sg.b)}</a></p>` : '';
   return `
       <section class="panel today wird ${ws.complete ? 'met' : ''}">
         <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page')}</span></div>
         <ol class="wlist">${ws.items.map(x => `<li class="${x.done ? 'done' : ''}">
           ${mode ? `<a href="${segHref(pid, mode, x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
-          <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span></li>`).join('')}</ol>
+          <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span>${x.wait ? '<span class="wwait">⏳ أُرسلت، تُسجَّل حين يفتح برنامجه</span>' : ''}</li>`).join('')}</ol>
         <div class="gl"><span>التقدّم</span><b>${Q.dec(ws.done)} من ${unitTxt(ws.total, 'page')}</b></div>
         <div class="qbar ${ws.complete ? 'okb' : ''}"><i style="width:${pct(ws.done, ws.total)}%"></i></div>
         ${ws.complete ? '<p class="metmsg">أتممت ورد اليوم، بارك الله فيك.</p>' + extra
@@ -463,6 +465,8 @@ function applyPeer(r){
   const pid = Store.R(r.from); if (!Store.profile(pid) || !r.result) return;
   const d = Store.data(pid), id = 'peer-' + r.id;
   if (d.sess.some(s => s.id === id)) return;
+  // إعادة إرسال النتيجة نفسها (المقطع والمسمِّع نفساهما خلال ٥ دقائق) لا تُحسب جلسة ثانية
+  if (d.sess.some(s => s.mode === 'peer' && s.a === r.a && s.b === r.b && s.by === r.result.listener && Math.abs(s.t - r.result.t) < 5 * 60e3)) return;
   const mem = Store.mem(pid), W = rangeWords(r.a, r.b), marks = r.result.marks || {}, day = Store.dayOf(r.result.t);
   const rec = {id, t: r.result.t, a: r.a, b: r.b, ok: 0, wrong: 0, skip: 0, hint: 0, gap: 0, given: 0, fixed: 0,
                words: 0, letters: 0, pages: 0, ayat: 0, mode: 'peer', by: r.result.listener, byName: r.result.listenerName, note: r.result.note || ''};
@@ -625,7 +629,10 @@ function viewListen(_, args){
   $('#lsend').onclick = async () => {
     $('#lsend').disabled = true;
     try {
-      await Cloud.submitResult(req ? req.id : null, {from, to: me, a: A, b: B, marks, note: $('#lnote').value.trim()});
+      const result = Cloud.makeResult(me, marks, $('#lnote').value.trim());
+      const direct = Cloud.canEdit(Store.profile(from));
+      const rid = await Cloud.submitResult(req ? req.id : null, {from, to: me, a: A, b: B, result, direct});
+      if (direct) applyPeer({id: rid, from, a: A, b: B, result});
       // نصيب المسمِّع
       const dm = Store.data(me), t = Store.today(), e = (dm.lis = dm.lis || {})[t] || [0, 0];
       dm.lis[t] = [e[0] + 1, e[1] + W.length];
@@ -634,7 +641,7 @@ function viewListen(_, args){
       const err = Object.values(marks).length, pctv = Math.round((W.length - err) / W.length * 100);
       app.innerHTML = `<section class="panel today met"><h2>أُرسلت النتيجة إلى ${esc(pname(from))}</h2>
         <p style="font-size:34px;font-weight:700;color:var(--accent);margin:6px 0">${AR(pctv)}٪</p>
-        <p class="small">ستظهر في ملفّه وتُحسب في مراجعته. جزاك الله خيرًا على التسميع.</p>
+        <p class="small">${direct ? 'سُجّلت في ملفّه الآن وحُسبت في مراجعته.' : 'تُسجَّل في ملفّه حين يفتح برنامجه، وتُحسب في مراجعته.'} جزاك الله خيرًا على التسميع.</p>
         <a class="btn primary" href="#/">رجوع إلى الحلقة</a></section>`;
     } catch(x){ $('#lsend').disabled = false; alert('تعذّر الإرسال. تأكّد من الاتصال ثم أعد المحاولة.'); }
   };

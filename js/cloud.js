@@ -80,7 +80,8 @@ const Cloud = (() => {
       st.requests = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => b.created - a.created);
       // نتيجة جاهزة لفرد يملكه هذا الجهاز: تُطبَّق على ملفّه مرة واحدة
       st.requests.filter(r => { const p = Store.profile(r.from);
-        return r.status === 'done' && !r.applied && (mine(p) || (isOwner() && p && Array.isArray(p.uids) && !p.uids.length)); }).forEach(r => {
+        const heard = r.result && Store.profile(r.result.listener);
+        return r.status === 'done' && !r.applied && (mine(p) || (isOwner() && p && ((Array.isArray(p.uids) && !p.uids.length) || mine(heard)))); }).forEach(r => {
         try { if (Cloud.onPeerDone) Cloud.onPeerDone(r); db.doc(`families/${fid}/requests/${r.id}`).update({applied: true}).catch(() => {}); }
         catch(e){ console.error(e); }
       });
@@ -143,10 +144,15 @@ const Cloud = (() => {
       await pushPub(ref.id, d.sess);
     }
   }
+  function progFor(p, d){
+    const w = Stats.week(p.id), r = d.prog;
+    if (mine(p) || !r || r.w !== w.w) return w;
+    return {w: w.w, np: Math.max(w.np, r.np || 0), na: Math.max(w.na, r.na || 0), rp: Math.max(w.rp, r.rp || 0)};
+  }
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
     return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now(),
-            goal: d.goal || null, nl: d.nl || {}, prog: Stats.week(id), wird: d.wird || null, lis: d.lis || {}};
+            goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}};
   }
 
   /* ---------- رفع التعديلات ---------- */
@@ -220,11 +226,16 @@ const Cloud = (() => {
   }
   const setStatus = (id, status) => reqCol().doc(id).update({status, at: Date.now()});
   // المسمِّع يرسل النتيجة: لطلب قائم (id) أو لتسميع حضوري جديد (id = null)
-  async function submitResult(id, {from, to, a, b, marks, note}){
+  // direct: جهاز المسمِّع يملك حقّ الكتابة في ملف الحافظ (وليّ الأمر) فيسجّلها بنفسه فورًا
+  function makeResult(to, marks, note){
     const listener = Store.profile(to);
-    const result = {marks, note: note || '', t: Date.now(), listener: to, listenerName: listener ? listener.name : ''};
-    if (id) await reqCol().doc(id).update({to, status: 'done', result, applied: false});
-    else await reqCol().add({from, to, a, b, status: 'done', created: Date.now(), by: user.uid, result, applied: false});
+    return {marks, note: note || '', t: Date.now(), listener: to, listenerName: listener ? listener.name : ''};
+  }
+  async function submitResult(id, {from, to, a, b, result, direct}){
+    const ref = id ? reqCol().doc(id) : reqCol().doc();
+    if (id) await ref.update({to, status: 'done', result, applied: !!direct});
+    else await ref.set({from, to, a, b, status: 'done', created: Date.now(), by: user.uid, result, applied: !!direct});
+    return ref.id;
   }
 
   // «هذا أنا»: ربط فرد غير مربوط بهذا الجهاز
@@ -282,7 +293,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    sendRequest, setStatus, submitResult, onPeerDone: null,
+    sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
