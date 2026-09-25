@@ -1,0 +1,73 @@
+rules_version = '2';
+// قواعد حماية «حلقة البيت»: لا يقرأ بيانات العائلة إلا أفرادها، ولوحة القيادة (المدير) تقرأ الأرقام المجمّعة فقط.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'o.alhatlani@gmail.com' && request.auth.token.email_verified == true;
+    }
+    function fam(fid) { return /databases/$(database)/documents/families/$(fid); }
+    function inFamily(fid) { return signedIn() && exists(/databases/$(database)/documents/families/$(fid)/access/$(request.auth.uid)); }
+    function isOwner(fid) { return signedIn() && get(fam(fid)).data.owner == request.auth.uid; }
+    function hasFamily() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+
+    // دعوات إنشاء العائلات: ينشئها المدير، ويستعملها ولي الأمر مرة واحدة
+    match /invites/{inv} {
+      allow get: if signedIn();
+      allow list, create, delete: if isAdmin();
+      allow update: if signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && resource.data.used == false && request.resource.data.used == true
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedBy', 'fid', 'usedAt']);
+    }
+
+    match /families/{fid} {
+      allow read: if inFamily(fid) || isAdmin();
+      // الإنشاء: المدير مباشرة، وغيره بدعوة استُعملت في الدفعة نفسها باسمه ولهذه العائلة
+      allow create: if signedIn() && request.resource.data.owner == request.auth.uid
+        && (isAdmin() || (request.resource.data.invite is string
+          && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.usedBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.fid == fid));
+      allow update: if isOwner(fid) && request.resource.data.owner == resource.data.owner;
+      allow delete: if isAdmin();
+
+      match /access/{uid} {
+        allow read: if inFamily(fid) || isAdmin();
+        allow create: if signedIn() && uid == request.auth.uid
+          && ((request.resource.data.code is string && request.resource.data.code == get(fam(fid)).data.joinCode)
+            || getAfter(fam(fid)).data.owner == request.auth.uid);
+        allow delete: if isOwner(fid) || (signedIn() && uid == request.auth.uid);
+      }
+      match /members/{mid} {
+        allow read, create, update: if inFamily(fid);
+        allow delete: if isOwner(fid);
+        match /sessions/{sid} {
+          allow read, create, update: if inFamily(fid);
+          allow delete: if isOwner(fid);
+        }
+      }
+    }
+
+    match /joinCodes/{jc} {
+      allow get: if signedIn();
+      allow create: if signedIn() && getAfter(fam(request.resource.data.fid)).data.owner == request.auth.uid;
+      allow delete: if signedIn() && get(fam(resource.data.fid)).data.owner == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && uid == request.auth.uid;
+    }
+
+    // أرقام فقط للوحة القيادة
+    match /pub/{mid} {
+      allow read: if isAdmin();
+      allow create: if inFamily(request.resource.data.fid);
+      allow update: if inFamily(resource.data.fid) && request.resource.data.fid == resource.data.fid;
+      allow delete: if isAdmin() || inFamily(resource.data.fid);
+    }
+    match /daily/{day} {
+      allow read: if isAdmin();
+      allow create, update: if hasFamily();
+    }
+  }
+}

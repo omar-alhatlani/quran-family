@@ -1,0 +1,229 @@
+/* المزامنة مع Firebase: الدخول، وإنشاء حلقة العائلة بدعوة، والانضمام برمز العائلة،
+   ومزامنة الأفراد وجلساتهم، والأرقام المجمّعة للوحة القيادة (pub وdaily).
+
+   Firestore:
+   invites/{رمز}                 دعوات إنشاء العائلات (تنشئها لوحة القيادة)
+   joinCodes/{رمز}               رمز العائلة ← fid
+   families/{fid}                {name, owner, joinCode, invite, created}
+   families/{fid}/access/{uid}   من يحقّ له الدخول
+   families/{fid}/members/{mid}  {name, color, mem, rev, mis, up}
+     …/members/{mid}/sessions/{id}
+   users/{uid}                   {fid}
+   pub/{mid}                     أرقام فقط للوحة: {fid, mem:{l,w,a,p,j}, tot:{s,w,l,p}}
+   daily/{اليوم}                 مجاميع التسميع اليومية لكل المنصّة */
+const Cloud = (() => {
+  const CONFIG = {
+    apiKey: 'AIzaSyAmgAJu228LDA_lltp3WHjsd91EgVRlrJc',
+    authDomain: 'halaqa-albait.firebaseapp.com',
+    projectId: 'halaqa-albait',
+    storageBucket: 'halaqa-albait.firebasestorage.app',
+    messagingSenderId: '255342838963',
+    appId: '1:255342838963:web:684d768a402f887fc01cc6'
+  };
+  const ADMIN_EMAIL = 'o.alhatlani@gmail.com';
+  const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // بلا حروف ملتبسة (O/0، I/1، L)
+  const code = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALPHA[b % ALPHA.length]).join('');
+  const FV = () => firebase.firestore.FieldValue;
+
+  let auth = null, db = null, user = null, unsubMembers = null;
+  const st = {ok: false, user: null, fid: null, family: null, error: null};
+  const subs = new Set();
+  const emit = () => subs.forEach(f => { try { f(st); } catch(e){} });
+
+  function init(){
+    if (!window.firebase){ st.error = 'offline'; return Promise.resolve(st); }
+    firebase.initializeApp(CONFIG);
+    auth = firebase.auth(); db = firebase.firestore();
+    db.enablePersistence({synchronizeTabs: true}).catch(() => {});
+    Store.hooks.changed = id => { if (st.fid) schedulePush(id); };
+    Store.hooks.session = (id, rec, isNew) => { if (st.fid) pushSession(id, rec, isNew); };
+    return new Promise(resolve => {
+      let first = true;
+      auth.onAuthStateChanged(async u => {
+        user = u; st.user = u ? {uid: u.uid, email: u.email, anon: u.isAnonymous, admin: isAdminUser(u)} : null;
+        if (u) await attach().catch(e => { st.error = e.code || e.message; });
+        else detach();
+        st.ok = true; emit();
+        if (first){ first = false; resolve(st); }
+      });
+    });
+  }
+  const isAdminUser = u => !!(u && u.email === ADMIN_EMAIL && u.emailVerified);
+
+  /* ---------- ربط الجهاز بعائلته ---------- */
+  async function attach(){
+    const us = await db.doc(`users/${user.uid}`).get();
+    if (!us.exists){ st.fid = null; st.family = null; return; }
+    const fid = us.data().fid;
+    const fam = await db.doc(`families/${fid}`).get();
+    if (!fam.exists){ st.fid = null; return; }
+    st.fid = fid; st.family = {id: fid, ...fam.data()};
+    Store.DB.fid = fid; Store.save();
+    await uploadLocal();
+    if (unsubMembers) unsubMembers();
+    unsubMembers = db.collection(`families/${fid}/members`).onSnapshot(snap => {
+      let changed = false;
+      snap.docChanges().forEach(ch => {
+        if (ch.doc.metadata.hasPendingWrites) return;   // صدى كتابة هذا الجهاز
+        changed = true;
+        if (ch.type === 'removed'){ Store.removeProfile(ch.doc.id); return; }
+        const x = ch.doc.data();
+        Store.applyRemote(ch.doc.id, {...x, mem: decodeMem(x.mem)});
+      });
+      if (changed) emit();
+    }, () => {});
+  }
+  function detach(){ if (unsubMembers){ unsubMembers(); unsubMembers = null; } st.fid = null; st.family = null; }
+
+  const encodeMem = r => r.map(([a, b]) => a === b ? `${a}` : `${a}-${b}`).join(',');
+  const decodeMem = s => !s ? [] : s.split(',').map(x => { const [a, b] = x.split('-').map(Number); return [a, b === undefined ? a : b]; });
+
+  /* ---------- رفع البيانات المحلية (أول انضمام) ---------- */
+  // الأفراد المحليون الذين لم يُرفعوا بعد: يُدمجون بفرد بالاسم نفسه أو يُنشأ لهم فرد جديد
+  async function uploadLocal(){
+    const local = Store.profiles().filter(p => !p.cloud);
+    if (!local.length) return;
+    const existing = await db.collection(`families/${st.fid}/members`).get();
+    const byName = {}; existing.forEach(d => { byName[d.data().name.trim()] = d; });
+    for (const p of local){
+      const match = byName[p.name.trim()];
+      const ref = match ? match.ref : db.collection(`families/${st.fid}/members`).doc();
+      const d = Store.data(p.id);
+      if (match){   // دمج: اتحاد المحفوظ، وأحدث تسميع لكل آية
+        const x = match.data();
+        const m = new Uint8Array(Q.TOTAL_AYAT);
+        [...decodeMem(x.mem), ...d.mem].forEach(([a, b]) => m.fill(1, a, b + 1));
+        const ranges = []; let s = -1;
+        for (let i = 0; i <= m.length; i++){ if (i < m.length && m[i]){ if (s < 0) s = i; } else if (s >= 0){ ranges.push([s, i - 1]); s = -1; } }
+        const rev = {...(x.rev || {})};
+        Object.entries(d.rev).forEach(([i, v]) => { if (!rev[i] || rev[i][0] < v[0]) rev[i] = v; });
+        const mis = {...(x.mis || {})};
+        Object.entries(d.mis).forEach(([g, c]) => { mis[g] = (mis[g] || 0) + c; });
+        Object.assign(d, {mem: ranges, rev, mis});
+      }
+      Store.renameProfile(p.id, ref.id);
+      const prof = Store.profile(ref.id); prof.cloud = true;
+      if (match){ prof.name = match.data().name; prof.color = match.data().color; }
+      d.up = Date.now(); Store.save();
+      await ref.set(memberDoc(ref.id));
+      // الجلسات دفعاتٍ لا تتجاوز ٤٠٠
+      for (let k = 0; k < d.sess.length; k += 400){
+        const b = db.batch();
+        d.sess.slice(k, k + 400).forEach(s => { s.id = s.id || Store.uid(); b.set(ref.collection('sessions').doc(s.id), s); });
+        await b.commit();
+      }
+      Store.save();
+      await pushPub(ref.id, d.sess);
+    }
+  }
+  function memberDoc(id){
+    const p = Store.profile(id), d = Store.data(id);
+    return {name: p.name, color: p.color, mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now()};
+  }
+
+  /* ---------- رفع التعديلات ---------- */
+  const timers = {};
+  function schedulePush(id){
+    clearTimeout(timers[id]);
+    timers[id] = setTimeout(() => pushMember(id), 1200);
+  }
+  async function pushMember(id){
+    const p = Store.profile(id); if (!p || !st.fid) return;
+    if (!p.cloud){ await uploadLocal(); return; }
+    await db.doc(`families/${st.fid}/members/${id}`).set(memberDoc(id));
+    await pushPub(id);
+  }
+  // الأرقام العامة للوحة القيادة: المحفوظ يُحسب كاملًا، والتسميع يزيد تراكميًّا
+  async function pushPub(id, initialSessions){
+    const m = Stats.memorized(id);
+    const doc = {fid: st.fid, mem: {l: m.letters, w: m.words, a: m.ayat, p: +m.pages.toFixed(3), j: +m.juz.toFixed(3)}, up: Date.now()};
+    if (initialSessions){
+      const t = {s: 0, w: 0, l: 0, p: 0};
+      initialSessions.forEach(s => { t.s++; t.w += s.words || 0; t.l += s.letters || 0; t.p += s.pages || 0; });
+      doc.tot = t;
+    }
+    await db.doc(`pub/${id}`).set(doc, {merge: true});
+  }
+  async function pushSession(id, rec, isNew){
+    const p = Store.profile(id); if (!p || !p.cloud) return schedulePush(id);
+    await db.doc(`families/${st.fid}/members/${id}/sessions/${rec.id}`).set(rec);
+    if (!isNew) return;
+    const inc = FV().increment;
+    await db.doc(`pub/${id}`).set({fid: st.fid, tot: {s: inc(1), w: inc(rec.words), l: inc(rec.letters), p: inc(rec.pages)}}, {merge: true});
+    await db.doc(`daily/${Store.today()}`).set({d: Store.today(), s: inc(1), w: inc(rec.words), l: inc(rec.letters), p: inc(rec.pages)}, {merge: true});
+  }
+  // جلسات فرد (لتقاريره على جهاز آخر)
+  const loaded = new Set();
+  async function loadSessions(id){
+    if (!st.fid || loaded.has(id)) return false;
+    loaded.add(id);
+    const snap = await db.collection(`families/${st.fid}/members/${id}/sessions`).orderBy('t', 'desc').limit(1000).get();
+    Store.mergeSessions(id, snap.docs.map(d => d.data()));
+    return true;
+  }
+
+  /* ---------- الدخول ---------- */
+  async function googleSignIn(){
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({prompt: 'select_account'});
+    try { await auth.signInWithPopup(provider); }
+    catch(e){
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') await auth.signInWithRedirect(provider);
+      else throw e;
+    }
+  }
+  // الخروج: تبقى بيانات العائلة في السحابة، ويُمسح نسخها من هذا الجهاز
+  async function signOut(){
+    await auth.signOut();
+    Store.profiles().filter(p => p.cloud).map(p => p.id).forEach(id => Store.removeProfile(id));
+    Store.DB.fid = null; Store.save();
+  }
+  // حذف فرد (لوليّ الأمر)
+  async function removeMember(id){
+    await db.doc(`families/${st.fid}/members/${id}`).delete();
+    await db.doc(`pub/${id}`).delete().catch(() => {});
+  }
+
+  /* ---------- إنشاء حلقة عائلة (بدعوة، أو مباشرةً للمدير) ---------- */
+  async function createFamily(name, inviteCode){
+    if (!user || user.isAnonymous) throw new Error('need-google');
+    const admin = isAdminUser(user);
+    const fref = db.collection('families').doc(), fid = fref.id;
+    let jc = code(6);
+    while ((await db.doc(`joinCodes/${jc}`).get()).exists) jc = code(6);
+    const b = db.batch();
+    const fam = {name, owner: user.uid, joinCode: jc, created: Date.now()};
+    if (!admin || inviteCode){
+      const inv = await db.doc(`invites/${inviteCode}`).get();
+      if (!inv.exists) throw new Error('invite-missing');
+      if (inv.data().used) throw new Error('invite-used');
+      fam.invite = inviteCode;
+      b.update(inv.ref, {used: true, usedBy: user.uid, fid, usedAt: Date.now()});
+    }
+    b.set(fref, fam);
+    b.set(db.doc(`families/${fid}/access/${user.uid}`), {role: 'owner', at: Date.now()});
+    b.set(db.doc(`joinCodes/${jc}`), {fid});
+    b.set(db.doc(`users/${user.uid}`), {fid});
+    await b.commit();
+    await attach(); emit();
+  }
+
+  /* ---------- الانضمام برمز العائلة ---------- */
+  async function joinFamily(jc){
+    jc = jc.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!user) await auth.signInAnonymously();
+    const j = await db.doc(`joinCodes/${jc}`).get();
+    if (!j.exists) throw new Error('code-missing');
+    const fid = j.data().fid;
+    await db.doc(`families/${fid}/access/${auth.currentUser.uid}`).set({role: 'member', code: jc, at: Date.now()});
+    await db.doc(`users/${auth.currentUser.uid}`).set({fid});
+    user = auth.currentUser;
+    await attach(); emit();
+  }
+
+  return {
+    init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
+    googleSignIn, signOut, removeMember, createFamily, joinFamily, loadSessions,
+    get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
+  };
+})();

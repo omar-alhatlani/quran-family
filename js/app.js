@@ -30,16 +30,17 @@ function ago(t){
 const STATE_TXT = {fresh: 'ثابت', stale: 'يحتاج مراجعة', weak: 'ضعيف', unrev: 'لم يُسمَّع بعد'};
 
 /* ================= التنقّل ================= */
-function route(){
+function route(keepScroll){
   if (cleanup){ cleanup(); cleanup = null; }
+  const y = scrollY;
   document.body.classList.remove('has-bar');
   const parts = (location.hash.slice(1) || '/').split('/').filter(Boolean);
   const pid = Store.cur;
   if (!parts.length || !pid) return viewProfiles();
   ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
-  window.scrollTo(0, 0);
+  window.scrollTo(0, keepScroll === true ? y : 0);
 }
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => route());
 
 /* ================= الأفراد ================= */
 function viewProfiles(){
@@ -54,6 +55,7 @@ function viewProfiles(){
       const m = Stats.memorized(p.id);
       return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small></span></button>`;
     }).join('')}</div>
+    ${familyPanel()}
     <details class="panel" ${ps.length ? '' : 'open'}>
       <summary>إضافة فرد من العائلة</summary>
       <form id="addForm" style="margin-top:10px">
@@ -80,6 +82,7 @@ function viewProfiles(){
     const p = Store.addProfile(name, $('input[name=pcolor]:checked').value);
     Store.cur = p.id; location.hash = '#/home';
   };
+  bindFamilyPanel();
   $('#exp').onclick = () => {
     const blob = new Blob([Store.exportJSON()], {type: 'application/json'});
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -91,6 +94,79 @@ function viewProfiles(){
     if (!confirm('سيحلّ محتوى الملف محلّ كل البيانات في هذا الجهاز. متابعة؟')) return;
     try { Store.importJSON(await f.text()); route(); }
     catch(err){ alert('هذا الملف ليس نسخة احتياطية من حلقة البيت.'); }
+  };
+}
+
+/* ================= حلقة العائلة (السحابة) ================= */
+const ERR = {
+  'invite-missing': 'رمز الدعوة غير صحيح. تأكّد منه ثم أعد المحاولة.',
+  'invite-used': 'رمز الدعوة هذا استُعمل من قبل. اطلب رمزًا جديدًا.',
+  'code-missing': 'رمز العائلة غير صحيح. تأكّد منه ثم أعد المحاولة.',
+  'need-google': 'إنشاء الحلقة يحتاج الدخول بحساب Google.',
+  'auth/popup-closed-by-user': 'أُغلقت نافذة الدخول قبل إكماله.',
+  'auth/network-request-failed': 'لا يوجد اتصال بالإنترنت.',
+  'permission-denied': 'لا تملك صلاحية لهذا الإجراء.'
+};
+const errText = e => ERR[e && (e.message in ERR ? e.message : e.code)] || 'حدث خطأ غير متوقّع. أعد المحاولة بعد قليل.';
+const isOwner = () => !!(Cloud.st.family && Cloud.st.user && Cloud.st.family.owner === Cloud.st.user.uid);
+const joinLink = c => location.origin + location.pathname + '?j=' + c;
+
+function familyPanel(){
+  const st = Cloud.st;
+  if (!st.ok) return '';
+  const admin = st.user && st.user.admin ? '<p style="margin:10px 0 0"><a class="btn small" href="admin.html">لوحة القيادة</a></p>' : '';
+  if (st.fid && st.family) return `
+    <section class="panel today">
+      <div class="row between"><h2>حلقة ${esc(st.family.name)}</h2>${isOwner() ? '<span class="chip">وليّ الأمر</span>' : ''}</div>
+      <p class="small" style="margin:4px 0 8px">أرسل رمز العائلة لأهلك ليدخلوا من جوالاتهم، ويرى كل واحد تقدّم الحلقة.</p>
+      <div class="row"><b class="jcode" dir="ltr">${st.family.joinCode}</b>
+        <button class="btn small primary" id="copyJoin" type="button">نسخ رابط الانضمام</button></div>
+      <p style="margin:10px 0 0" class="small">${st.user.email ? esc(st.user.email) + ' · ' : ''}<button class="btn small" id="signOut" type="button">تسجيل الخروج من هذا الجهاز</button></p>${admin}
+    </section>`;
+  const q = new URLSearchParams(location.search).get('j') || '';
+  const g = st.user && !st.user.anon;
+  return `
+    <section class="panel today">
+      <h2>حلقة العائلة</h2>
+      <p class="small" style="margin:4px 0 10px">اربط جوالك بعائلتك لتتزامن بياناتكم ويرى كل واحد تقدّم الحلقة.</p>
+      <form id="joinForm" class="row">
+        <label for="jc">رمز العائلة</label>
+        <input type="text" id="jc" class="codein" value="${esc(q)}" maxlength="8" autocomplete="off" dir="ltr" required>
+        <button class="btn primary" type="submit">انضمّ</button>
+      </form>
+      <div id="famErr" class="warn" hidden></div>
+      <details style="margin-top:12px" ${g ? 'open' : ''}><summary class="small" style="font-weight:600">وليّ أمر معه دعوة؟ أنشئ حلقة لعائلتك</summary>
+        ${g ? `<form id="createForm" style="margin-top:10px">
+            <p class="small" style="margin:0 0 8px">دخلت باسم ${esc(st.user.email || '')} · <button class="btn small" id="signOut" type="button">خروج</button></p>
+            <label for="fname">اسم العائلة</label><input type="text" id="fname" maxlength="30" required placeholder="مثل: آل فلان">
+            ${st.user.admin ? '<p class="small">أنت المدير: لا تحتاج رمز دعوة.</p>' : '<label for="inv" style="display:block;margin-top:8px">رمز الدعوة</label><input type="text" id="inv" class="codein" maxlength="10" required dir="ltr">'}
+            <div style="margin-top:10px"><button class="btn primary" type="submit">أنشئ الحلقة</button></div>
+          </form>` : '<div style="margin-top:10px"><button class="btn" id="gIn" type="button">الدخول بحساب Google</button></div>'}
+      </details>${admin}
+    </section>`;
+}
+function bindFamilyPanel(){
+  const err = e => { const b = $('#famErr'); if (b){ b.textContent = errText(e); b.hidden = false; } else alert(errText(e)); };
+  const busy = (form, on) => form && $('button, input', form).forEach(x => { x.disabled = on; });
+  if ($('#copyJoin')) $('#copyJoin').onclick = () => {
+    const f = Cloud.st.family;
+    const t = `انضمّ إلى حلقة ${f.name} لحفظ القرآن الكريم:\n${joinLink(f.joinCode)}\nرمز العائلة: ${f.joinCode}`;
+    navigator.clipboard.writeText(t).then(() => { $('#copyJoin').textContent = 'نُسخ ✓'; }).catch(() => prompt('انسخ الرسالة:', t));
+  };
+  $('#signOut').forEach(b => b.onclick = async () => {
+    if (Cloud.st.fid && !confirm('ستُمسح بيانات العائلة من هذا الجهاز وتبقى محفوظة في السحابة، وتعود إليها بالرمز متى شئت. متابعة؟')) return;
+    await Cloud.signOut(); route();
+  });
+  if ($('#gIn')) $('#gIn').onclick = () => Cloud.googleSignIn().catch(err);
+  if ($('#joinForm')) $('#joinForm').onsubmit = async e => {
+    e.preventDefault(); busy(e.target, true);
+    try { await Cloud.joinFamily($('#jc').value); history.replaceState(null, '', location.pathname + '#/'); route(); }
+    catch(x){ busy(e.target, false); err(x); }
+  };
+  if ($('#createForm')) $('#createForm').onsubmit = async e => {
+    e.preventDefault(); busy(e.target, true);
+    try { await Cloud.createFamily($('#fname').value.trim(), $('#inv') ? $('#inv').value.trim().toUpperCase() : ''); route(); }
+    catch(x){ busy(e.target, false); err(x); }
   };
 }
 
@@ -129,9 +205,18 @@ function viewHome(pid){
     ${recent.length ? `<section class="panel"><h3>آخر التسميعات</h3><ul class="list">${recent.map(s => `
       <li><span>${Q.rangeLabel(s.a, s.b)} <span class="small">· ${s.kind === 'review' ? 'مراجعة' : 'حفظ جديد'} · ${ago(s.t)}</span></span><b>${AR(s.pct)}٪</b></li>`).join('')}</ul></section>` : ''}
     <p style="text-align:center;margin-top:24px"><button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>`;
-  $('#del').onclick = () => {
-    if (confirm(`سيُحذف ملف ${p.name} وكل تسميعاته من هذا الجهاز. متأكّد؟`)){ Store.removeProfile(pid); location.hash = '#/'; }
+  $('#del').onclick = async () => {
+    if (!p.cloud){
+      if (confirm(`سيُحذف ملف ${p.name} وكل تسميعاته من هذا الجهاز. متأكّد؟`)){ Store.removeProfile(pid); location.hash = '#/'; }
+      return;
+    }
+    if (!isOwner()) return alert('حذف الأفراد لوليّ أمر الحلقة فقط.');
+    if (!confirm(`سيُحذف ${p.name} من حلقة العائلة على كل الأجهزة. متأكّد؟`)) return;
+    try { await Cloud.removeMember(pid); Store.removeProfile(pid); location.hash = '#/'; }
+    catch(e){ alert('تعذّر الحذف. تأكّد من الاتصال ثم أعد المحاولة.'); }
   };
+  // جلسات هذا الفرد من الأجهزة الأخرى
+  Cloud.loadSessions(pid).then(ch => { if (ch && location.hash === '#/home' && Store.cur === pid) viewHome(pid); }).catch(() => {});
 }
 
 /* ================= الخريطة ================= */
@@ -426,8 +511,9 @@ function applySession(pid, A, B, W, prev){
   const graded = rec.ok + rec.wrong + rec.skip + rec.hint;
   rec.pct = graded ? Math.round(rec.ok / graded * 100) : 0;
   rec.kind = reached.length && reached.every(i => mem[i]) ? 'review' : 'new';
-  if (!prev){ d.sess.push(rec); if (d.sess.length > 2000) d.sess.shift(); }
-  Store.save();
+  if (!prev) Store.addSession(pid, rec);
+  Store.touch(pid);
+  Store.hooks.session(pid, rec, !prev);
   return {rec, misDelta, revPrev, reached};
 }
 
@@ -435,6 +521,7 @@ function applySession(pid, A, B, W, prev){
 let repDays = 7;
 function viewReport(pid){
   const p = Store.profile(pid);
+  Cloud.loadSessions(pid).then(ch => { if (ch && location.hash === '#/report') viewReport(pid); }).catch(() => {});
   setTop('تقرير ' + p.name, '#/home');
   const m = Stats.memorized(pid), pr = Stats.period(pid, repDays), cov = Stats.coverage(pid), wk = Stats.weekly(pid), weak = Stats.weakSpots(pid);
   const max = Math.max(...wk, 1);
@@ -494,6 +581,10 @@ function viewReport(pid){
 (async function boot(){
   try { await Q.load(); }
   catch(e){ app.innerHTML = '<p class="warn">تعذّر تحميل المصحف. تأكّد من الاتصال بالإنترنت ثم أعد فتح الصفحة.</p>'; return; }
+  // لا ننتظر السحابة أكثر من ٤ ثوانٍ؛ البرنامج يعمل على الجهاز ثم يتزامن
+  await Promise.race([Cloud.init().catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
   route();
+  // تحديثات السحابة (أفراد جدد، تعديلات من أجهزة أخرى) تُعرض إلا أثناء التسميع والخريطة
+  Cloud.subscribe(() => { if (!/^#\/(tasmee|map)/.test(location.hash)) route(true); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
