@@ -47,15 +47,17 @@ const Stats = (() => {
       if (score > bestScore){ bestScore = score; best = {pg, state: info.state}; }
     }
     if (!best) return null;
-    // أول مقطع محفوظ متّصل من الوجه داخل سورة واحدة
-    for (const [a, b] of Q.pageSegments(best.pg)){
-      let s = -1;
-      for (let i = a; i <= b + 1; i++){
-        if (i <= b && m[i]){ if (s < 0) s = i; }
-        else if (s >= 0) return {a: s, b: i - 1, pg: best.pg, state: best.state};
-      }
+    // المقطع الذي يحتاج المراجعة فعلًا: الآية الأسوأ حالةً في الوجه (وأقدمها تسميعًا)،
+    // ثم ما يتّصل بها من المحفوظ داخل سورتها وفي الوجه نفسه
+    let worst = -1, wr = 0, wAge = -1;
+    for (let i = Q.pageFirst[best.pg]; i <= Q.pageLast[best.pg]; i++) if (m[i]){
+      const r = RANK[ayahState(id, i, today)], age = rev[i] ? today - rev[i][0] : 9999;
+      if (r > wr || (r === wr && age > wAge)){ worst = i; wr = r; wAge = age; }
     }
-    return null;
+    let a = worst, b = worst;
+    while (a - 1 >= Q.pageFirst[best.pg] && m[a - 1] && Q.sur[a - 1] === Q.sur[worst]) a--;
+    while (b + 1 <= Q.pageLast[best.pg] && m[b + 1] && Q.sur[b + 1] === Q.sur[worst]) b++;
+    return {a, b, pg: best.pg, state: best.state};
   }
 
   // ملخّص التسميع خلال آخر `days` يومًا (أو الكل)

@@ -232,7 +232,7 @@ function viewHome(pid){
       <a class="act" href="#/report">${ICON.chart}التقرير</a>
     </nav>
     ${recent.length ? `<section class="panel"><h3>آخر التسميعات</h3><ul class="list">${recent.map(s => `
-      <li><span>${Q.rangeLabel(s.a, s.b)} <span class="small">· ${s.kind === 'review' ? 'مراجعة' : 'حفظ جديد'} · ${ago(s.t)}</span></span><b>${AR(s.pct)}٪</b></li>`).join('')}</ul></section>` : ''}
+      <li><span>${Q.rangeLabel(s.a, s.b)} <span class="small">· ${s.kind === 'review' ? 'مراجعة' : 'حفظ جديد'} · ${ago(s.t)} ${new Date(s.t).toLocaleTimeString('ar-SA', {hour: 'numeric', minute: '2-digit'})}</span></span><b>${AR(s.pct)}٪</b></li>`).join('')}</ul></section>` : ''}
     ${!p.cloud || isOwner() ? `<p class="row" style="justify-content:center;margin-top:24px">
       ${p.cloud && !own && Array.isArray(p.uids) && p.uids.length ? '<button class="btn small" id="rel" type="button">السماح بربطه بجهاز جديد</button>' : ''}
       <button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>` : ''}`;
