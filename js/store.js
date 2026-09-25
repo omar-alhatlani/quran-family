@@ -58,7 +58,16 @@ const Store = (() => {
       if (i < m.length && m[i]){ if (s < 0) s = i; }
       else if (s >= 0){ ranges.push([s, i - 1]); s = -1; }
     }
-    data(id).mem = ranges; touch(id);
+    data(id).mem = ranges;
+    // شهادات الأجزاء: يُسجَّل يوم اكتمال الجزء، ويُزال إن نقص (نُسي)
+    const d = data(id), certs = d.certs = d.certs || {};
+    for (let j = Q.juz[a]; j <= Q.juz[b]; j++){
+      let full = true; for (let i = Q.juzFirst[j]; i <= Q.juzLast[j]; i++) if (!m[i]){ full = false; break; }
+      // أثناء الرسم الأول (قبل قفل الخريطة) يُسجَّل «قديمًا» بالسالب: ليس إتمامًا جديدًا
+      const locked = d.mapLock === 'open' ? false : !!(d.mapLock || d.goal);
+      if (full && !certs[j]) certs[j] = locked ? today() : -today(); else if (!full && certs[j]) delete certs[j];
+    }
+    touch(id);
   }
 
   return {
@@ -79,12 +88,12 @@ const Store = (() => {
       if (DB.cur === oldId) DB.cur = newId; save();
     },
     // نسخة السحابة أحدث: تحلّ محلّ المحلية
-    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog, wird, lis, wkp, hifz, mapLock}){
+    applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog, wird, lis, wkp, hifz, mapLock, certs}){
       let p = DB.profiles.find(x => x.id === id);
       if (!p){ p = {id, name, color, created: Date.now()}; DB.profiles.push(p); }
       p.name = name; p.color = color; p.cloud = true; p.uids = Array.isArray(uids) ? uids : null;
       const d = data(id);
-      if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null, wird: wird || null, lis: lis || {}, wkp: wkp || {}, hifz: hifz || null, mapLock: mapLock || null}); delete memCache[id]; }
+      if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null, wird: wird || null, lis: lis || {}, wkp: wkp || {}, hifz: hifz || null, mapLock: mapLock || null, certs: certs || {}}); delete memCache[id]; }
       save();
     },
     // جلسات من السحابة تُدمج بالمعرّف

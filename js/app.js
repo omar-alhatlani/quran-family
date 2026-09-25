@@ -43,7 +43,7 @@ function route(keepScroll){
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
@@ -276,6 +276,7 @@ function viewHome(pid){
     ${p.cloud ? suspendedNote() : ''}
     ${own ? peerBanner() : ''}
     ${own ? majlisCard() : ''}
+    ${m.words ? certCard(pid, Cloud.canEdit(p)) : ''}
     ${!m.words ? (edit ? `
       <section class="panel today">
         <h2>لنبدأ</h2>
@@ -906,6 +907,11 @@ function viewMajlis(){
         <p class="mj-reason">سمّع في ${count(star.days, 'يوم واحد', 'يومين', 'أيام', 'يومًا')} من سبعة${star.hasGoal ? ` · وحقّق ${AR(Math.round(star.base))}٪ من هدفه` : ''}${star.lis ? ` · وسمّع لأهله ${count(star.lis, 'مرة', 'مرتين', 'مرات', 'مرة')}` : ''}</p>
         <p class="mj-sub">النجم بالانتظام لا بالكثرة، فالأحبّ إلى الله أدومه وإن قلّ.</p>
       </div>` : `<div class="mj-star"><div class="mj-star-icon">⭐</div><p class="mj-reason">يظهر نجم الأسبوع حين يسمّع أفراد الحلقة.</p></div>`,
+      // ختمات الأسبوع (إن وُجدت)
+      ...(() => { const done = []; members.forEach(p => { const c = Store.data(p.id).certs || {}; Object.keys(c).forEach(j => { if (c[j] >= w && c[j] < w + 7) done.push([p, +j]); }); });
+        return done.length ? [`<div class="mj-star"><div class="mj-star-icon">🏅</div><p class="mj-sub">ختمات الأسبوع</p>
+          ${done.map(([p, j]) => `<p class="mj-reason"><b style="color:${p.color}">${esc(p.name)}</b>: إتمام حفظ ${juzTitle(j)}</p>`).join('')}
+          <p class="mj-sub">بارك الله في حفظهم، وجعله نورًا لهم.</p></div>`] : []; })(),
       // ٥) حصاد الأسبوع
       `<h2 class="mj-h">حصاد الأسبوع</h2>
        <div class="mj-stats">
@@ -1306,6 +1312,67 @@ function viewMut(pid){
   }).catch(() => { app.innerHTML = '<p class="warn">تعذّر تحميل المتشابهات. تأكّد من الاتصال.</p>'; });
 }
 
+/* ================= شهادات إتمام الأجزاء ================= */
+const JUZ_NAMES = ['', 'الم', 'سيقول', 'تلك الرسل', 'لن تنالوا', 'والمحصنات', 'لا يحب الله', 'وإذا سمعوا', 'ولو أننا', 'قال الملأ',
+  'واعلموا', 'يعتذرون', 'وما من دابة', 'وما أبرئ', 'ربما', 'سبحان', 'قال ألم', 'اقترب', 'قد أفلح', 'وقال الذين', 'أمن خلق',
+  'اتل ما أوحي', 'ومن يقنت', 'وما لي', 'فمن أظلم', 'إليه يرد', 'حم', 'قال فما خطبكم', 'قد سمع', 'تبارك', 'عمّ'];
+const juzTitle = j => `الجزء ${AR(j)} (جزء ${JUZ_NAMES[j]})`;
+// الأجزاء المكتملة: {الجزء: اليوم}؛ القيمة السالبة = اكتمل قبل تفعيل الشهادات (تاريخه غير معروف بدقّة)
+function certsOf(pid, write){
+  const d = Store.data(pid), m = Store.mem(pid), c = d.certs = d.certs || {};
+  let changed = false;
+  for (let j = 1; j <= 30; j++){
+    let full = true; for (let i = Q.juzFirst[j]; i <= Q.juzLast[j]; i++) if (!m[i]){ full = false; break; }
+    if (full && !c[j]){ c[j] = -(typeof d.mapLock === 'number' ? Store.dayOf(d.mapLock) : Store.today()); changed = true; }
+    else if (!full && c[j]){ delete c[j]; changed = true; }
+  }
+  if (changed && write) Store.touch(pid);
+  return c;
+}
+// بطاقة التهنئة في الرئيسية: جزء اكتمل خلال آخر ٧ أيام ولم تُفتح شهادته بعد
+function certCard(pid, own){
+  const c = certsOf(pid, own), seen = Store.pref('certSeen', {})[pid] || [];
+  const j = Object.keys(c).map(Number).find(k => c[k] > 0 && Store.today() - c[k] <= 7 && !seen.includes(k));
+  if (!j) return '';
+  const p = Store.profile(pid);
+  return `<a class="panel cert-card" href="#/cert/${j}"><span class="cc-ic">🎉</span>
+    <span><b>${own ? 'أتممت' : esc(p.name) + ':'} حفظ ${juzTitle(j)}!</b><span class="small">${own ? 'اعرض شهادتك واطبعها.' : 'اعرض شهادته.'}</span></span></a>`;
+}
+function certList(pid){
+  const c = certsOf(pid, false), js = Object.keys(c).map(Number).sort((a, b) => b - a);
+  if (!js.length) return '';
+  return `<section class="panel"><h2>الشهادات</h2><ul class="list">${js.map(j => `<li><span>🏅 ${juzTitle(j)}</span><a class="btn small" href="#/cert/${j}">اعرض</a></li>`).join('')}</ul></section>`;
+}
+// الشهادة: صفحة للطباعة أو الحفظ PDF
+function viewCert(pid, [j]){
+  const p = Store.profile(pid), c = certsOf(pid, false);
+  if (!p || !c[j]) return location.replace('#/home');
+  const seen = Store.pref('certSeen', {}); seen[pid] = [...new Set([...(seen[pid] || []), j])]; Store.setPref('certSeen', seen);
+  setTop('شهادة ' + p.name, '#/home');
+  document.body.classList.add('cert-mode');
+  const day = Math.abs(c[j]);
+  const greg = new Date(day * 864e5).toLocaleDateString('ar-SA-u-ca-gregory', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+  const hij = new Date(day * 864e5).toLocaleDateString('ar-SA-u-ca-islamic-umalqura', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+  const fam = Cloud.st.family ? Cloud.st.family.name : '';
+  app.innerHTML = `
+    <div class="cert-actions"><button class="btn primary" id="cPrint" type="button">طباعة أو حفظ PDF</button><a class="btn" href="#/home">رجوع</a></div>
+    <article class="cert" style="--c:${p.color}">
+      <div class="cert-in">
+        <div class="cert-bas">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>
+        <div class="cert-t">شهادة إتمام حفظ</div>
+        <p class="cert-l">${fam ? `تشهد حلقة ${esc(fam)} بإتمام` : 'تشهد حلقة البيت بإتمام'}</p>
+        <div class="cert-name">${esc(p.name)}</div>
+        <p class="cert-l">حفظ</p>
+        <div class="cert-juz">${juzTitle(j)}</div>
+        <p class="cert-l">من كتاب الله العزيز${c[j] > 0 ? `، في ${hij} الموافق ${greg}` : ''}.</p>
+        <p class="cert-dua">جعل الله القرآن حجّةً لـ${esc(p.name)}، ورفع به الدرجات، ونفع به.</p>
+        <div class="cert-foot"><span>﴿وَرَتِّلِ ٱلْقُرْءَانَ تَرْتِيلًا﴾</span><span>حلقة البيت</span></div>
+      </div>
+    </article>`;
+  $('#cPrint').onclick = () => window.print();
+  cleanup = () => document.body.classList.remove('cert-mode');
+}
+
 /* ================= الخريطة ================= */
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 // الخريطة مفتوحة للرسم الأول، ثم تُقفل: بزرّ «أنهيت رسم خريطتي» أو تلقائيًّا بوضع أول هدف.
@@ -1692,6 +1759,7 @@ function viewReport(pid){
       <div class="qbar"><i style="width:${cov || 0}%"></i></div>
       <p class="small">كلما اقتربت من ١٠٠٪ كان حفظك أثبت. خريطة «قوة المراجعة» تبيّن أي الأوجه تحتاجك.</p>
     </section>
+    ${certList(pid)}
     <section class="panel chart"><h2>الكلمات المسمَّعة أسبوعيًّا</h2>${chart}</section>
     <section class="panel">
       <h2>مواضع تحتاج انتباهًا</h2>

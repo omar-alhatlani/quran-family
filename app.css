@@ -368,3 +368,35 @@ body.stage .foot{display:none}
 .mut-cmp .q{font-family:var(--q);font-size:22px;line-height:2.1;margin:4px 0 0}
 .mut-cmp mark{background:var(--hint-bg);color:var(--hint);border-radius:4px;padding:0 2px}
 .mutw{color:var(--hint)}
+
+/* الشهادات */
+.cert-card{display:flex;gap:12px;align-items:center;text-decoration:none;color:var(--ink);border-color:var(--gold);background:var(--hint-bg)}
+.cert-card .cc-ic{font-size:30px}
+.cert-card b{display:block}
+.cert-actions{display:flex;gap:8px;justify-content:center;margin-block:14px}
+.cert{--c:#0f5f55;background:#fffdf7;color:#2a2418;border-radius:10px;padding:14px;box-shadow:0 2px 12px rgba(0,0,0,.12);margin-inline:auto;max-width:980px;aspect-ratio:1.414/1}
+.cert-in{height:100%;border:3px double #b8912f;outline:10px solid color-mix(in srgb,var(--c) 22%,transparent);outline-offset:-18px;border-radius:6px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:4% 6%;gap:.6vh}
+.cert-bas{font-family:var(--q);font-size:clamp(14px,2.2vw,24px);color:#7a6a45}
+.cert-t{font-size:clamp(24px,4.6vw,52px);font-weight:700;color:#8a6a1f;letter-spacing:.5px}
+.cert-l{margin:0;font-size:clamp(13px,1.9vw,22px);color:#4a4030}
+.cert-name{font-size:clamp(28px,5.6vw,64px);font-weight:700;color:var(--c);line-height:1.2}
+.cert-juz{font-size:clamp(18px,3.2vw,38px);font-weight:700;color:#2a2418}
+.cert-dua{font-family:var(--q);font-size:clamp(16px,2.4vw,28px);color:#5a4a28;margin:1vh 0 0}
+.cert-foot{display:flex;justify-content:space-between;width:100%;margin-top:auto;font-size:clamp(11px,1.5vw,16px);color:#7a6a45}
+.cert-foot span:first-child{font-family:var(--q)}
+@media print{
+  @page{size:A4 landscape;margin:0}
+  body{background:#fff!important;padding:0!important}
+  .top,.foot,.cert-actions{display:none!important}
+  main.wrap{max-width:none}
+  .cert{box-shadow:none;border-radius:0;max-width:none;width:297mm;height:210mm;aspect-ratio:auto;padding:10mm}
+  .cert-t{font-size:48px}.cert-name{font-size:60px}.cert-juz{font-size:34px}.cert-l{font-size:20px}.cert-dua{font-size:26px}.cert-bas{font-size:22px}
+}
+/* الشهادة على الجوال: ارتفاع حرّ بدل النسبة الأفقية (تبقى للطباعة والشاشات العريضة) */
+@media (max-width:699px){
+  .cert{aspect-ratio:auto;padding:8px}
+  .cert-in{padding:26px 16px;gap:8px;outline-width:6px;outline-offset:-12px}
+  .cert-t{font-size:26px}.cert-name{font-size:34px}.cert-juz{font-size:20px}.cert-l{font-size:15px}.cert-dua{font-size:18px}.cert-bas{font-size:16px}
+  .cert-foot{margin-top:14px;font-size:12px}
+}
