@@ -400,3 +400,5 @@ body.stage .foot{display:none}
   .cert-t{font-size:26px}.cert-name{font-size:34px}.cert-juz{font-size:20px}.cert-l{font-size:15px}.cert-dua{font-size:18px}.cert-bas{font-size:16px}
   .cert-foot{margin-top:14px;font-size:12px}
 }
+.danger-zone{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line)}
+.danger-zone summary{color:var(--wrong)}

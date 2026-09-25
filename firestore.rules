@@ -13,8 +13,6 @@ service cloud.firestore {
     function ownsMember(fid, mid) {
       return request.auth.uid in get(/databases/$(database)/documents/families/$(fid)/members/$(mid)).data.get('uids', []);
     }
-    // الحلقة غير موقوفة من المدير
-    function active(fid) { return !get(fam(fid)).data.get('suspended', false); }
     function hasFamily() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
 
     // دعوات إنشاء العائلات: ينشئها المدير، ويستعملها ولي الأمر مرة واحدة
@@ -28,38 +26,36 @@ service cloud.firestore {
     }
 
     match /families/{fid} {
-      allow read: if inFamily(fid) || isAdmin();
+      allow read: if inFamily(fid);
       // الإنشاء: المدير مباشرة، وغيره بدعوة استُعملت في الدفعة نفسها باسمه ولهذه العائلة
       allow create: if signedIn() && request.resource.data.owner == request.auth.uid
         && (isAdmin() || (request.resource.data.invite is string
           && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.usedBy == request.auth.uid
           && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.fid == fid));
-      allow update: if (isOwner(fid) && request.resource.data.owner == resource.data.owner
-          && request.resource.data.get('suspended', false) == resource.data.get('suspended', false))
-        || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['suspended', 'suspendedAt']));
-      allow delete: if isAdmin();
+      allow update: if isOwner(fid) && request.resource.data.owner == resource.data.owner;
+      // حذف الحلقة كاملة لوليّ أمرها وحده
+      allow delete: if isOwner(fid);
 
       match /access/{uid} {
-        allow read: if inFamily(fid) || isAdmin();
+        allow read: if inFamily(fid);
         allow create: if signedIn() && uid == request.auth.uid
           && ((request.resource.data.code is string && request.resource.data.code == get(fam(fid)).data.joinCode)
             || getAfter(fam(fid)).data.owner == request.auth.uid);
-        allow delete: if isOwner(fid) || isAdmin() || (signedIn() && uid == request.auth.uid);
+        allow delete: if isOwner(fid) || (signedIn() && uid == request.auth.uid);
       }
       // كل أفراد العائلة يرون الجميع، ولا يعدّل الفردَ إلا جهازه أو وليّ الأمر، ولا يحذفه إلا وليّ الأمر
-      // المدير يقرأ ويحذف فقط لحذف حلقة بطلبها (لوحته لا تعرض شيئًا من ذلك)
       match /members/{mid} {
-        allow read: if inFamily(fid) || isAdmin();
-        allow create: if inFamily(fid) && active(fid) && (isOwner(fid) || request.resource.data.uids == [request.auth.uid]);
-        allow update: if inFamily(fid) && active(fid) && (
+        allow read: if inFamily(fid);
+        allow create: if inFamily(fid) && (isOwner(fid) || request.resource.data.uids == [request.auth.uid]);
+        allow update: if inFamily(fid) && (
           isOwner(fid)
           || (request.auth.uid in resource.data.get('uids', []) && request.resource.data.uids == resource.data.uids)
           || (resource.data.get('uids', null) == [] && request.resource.data.uids == [request.auth.uid]));
-        allow delete: if isOwner(fid) || isAdmin();
+        allow delete: if isOwner(fid);
         match /sessions/{sid} {
-          allow read: if inFamily(fid) || isAdmin();
-          allow create, update: if inFamily(fid) && active(fid) && (isOwner(fid) || ownsMember(fid, mid));
-          allow delete: if isOwner(fid) || isAdmin();
+          allow read: if inFamily(fid);
+          allow create, update: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, mid));
+          allow delete: if isOwner(fid);
         }
       }
     }
@@ -67,14 +63,14 @@ service cloud.firestore {
     // «سمّعني»: طلبات التسميع ونتائجها داخل العائلة. الحافظ (from) يطلب، والمسمِّع (to) يكتب النتيجة،
     // وجهاز الحافظ وحده يطبّقها على ملفّه (applied).
     match /families/{fid}/requests/{rid} {
-      allow read: if inFamily(fid) || isAdmin();
-      allow create: if inFamily(fid) && active(fid) && request.resource.data.by == request.auth.uid
+      allow read: if inFamily(fid);
+      allow create: if inFamily(fid) && request.resource.data.by == request.auth.uid
         && (isOwner(fid) || request.resource.data.get('type', '') == 'relink' || ownsMember(fid, request.resource.data.from)
           || (request.resource.data.to != null && ownsMember(fid, request.resource.data.to)));
       allow update: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, resource.data.from)
         || (resource.data.to != null && ownsMember(fid, resource.data.to))
         || (resource.data.to == null && resource.data.status == 'pending'));
-      allow delete: if isAdmin() || (inFamily(fid) && (resource.data.by == request.auth.uid || isOwner(fid)));
+      allow delete: if inFamily(fid) && (resource.data.by == request.auth.uid || isOwner(fid));
     }
 
     match /joinCodes/{jc} {
@@ -82,22 +78,29 @@ service cloud.firestore {
       allow create: if signedIn() && getAfter(fam(request.resource.data.fid)).data.owner == request.auth.uid;
       allow update: if signedIn() && get(fam(resource.data.fid)).data.owner == request.auth.uid
         && request.resource.data.fid == resource.data.fid;
-      allow delete: if isAdmin() || (signedIn() && get(fam(resource.data.fid)).data.owner == request.auth.uid);
+      allow delete: if signedIn() && get(fam(resource.data.fid)).data.owner == request.auth.uid;
     }
 
     match /users/{uid} {
       allow read, write: if signedIn() && uid == request.auth.uid;
-      allow delete: if isAdmin();
+    }
+
+    // سجلّ بلا اسم لكل حلقة (تاريخ إنشائها فقط): يقرؤه المدير لعدّ الحلقات، ويكتبه وليّ الأمر
+    match /fstat/{fid} {
+      allow read: if isAdmin();
+      allow create, update: if signedIn() && getAfter(fam(fid)).data.owner == request.auth.uid
+        && request.resource.data.keys().hasOnly(['created']);
+      allow delete: if isOwner(fid);
     }
 
     // أرقام فقط للوحة القيادة
     match /pub/{mid} {
       allow read: if isAdmin();
-      allow create: if inFamily(request.resource.data.fid) && active(request.resource.data.fid)
+      allow create: if inFamily(request.resource.data.fid)
         && (isOwner(request.resource.data.fid) || ownsMember(request.resource.data.fid, mid));
-      allow update: if inFamily(resource.data.fid) && active(resource.data.fid) && request.resource.data.fid == resource.data.fid
+      allow update: if inFamily(resource.data.fid) && request.resource.data.fid == resource.data.fid
         && (isOwner(resource.data.fid) || ownsMember(resource.data.fid, mid));
-      allow delete: if isAdmin() || isOwner(resource.data.fid);
+      allow delete: if isOwner(resource.data.fid);
     }
     match /daily/{day} {
       allow read: if isAdmin();

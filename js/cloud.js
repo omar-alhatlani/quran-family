@@ -55,13 +55,18 @@ const Cloud = (() => {
     const us = await db.doc(`users/${user.uid}`).get();
     if (!us.exists){ st.fid = null; st.family = null; return; }
     const fid = us.data().fid;
-    const fam = await db.doc(`families/${fid}`).get();
-    if (!fam.exists){ st.fid = null; return; }
+    const fam = await db.doc(`families/${fid}`).get().catch(() => null);
+    if (!fam || !fam.exists){ cleanupDeleted(); return; }
     st.fid = fid; st.family = {id: fid, ...fam.data()};
     // المكافأة وغيرها قد يغيّرها وليّ الأمر من جهازه
     if (unsubFam) unsubFam();
-    unsubFam = db.doc(`families/${fid}`).onSnapshot(s => { if (s.exists){ st.family = {id: fid, ...s.data()}; emit(); } }, () => {});
+    unsubFam = db.doc(`families/${fid}`).onSnapshot(s => {
+      if (s.exists){ st.family = {id: fid, ...s.data()}; emit(); }
+      else if (!s.metadata.fromCache){ detach(); cleanupDeleted(); emit(); }   // حذفها وليّ أمرها
+    }, () => {});
     Store.DB.fid = fid; Store.save();
+    if (st.family.owner === user.uid && !Store.pref('fstat-' + fid, false))
+      db.doc(`fstat/${fid}`).set({created: st.family.created || Date.now()}).then(() => Store.setPref('fstat-' + fid, true)).catch(() => {});
     if (st.family.owner === user.uid) db.doc(`joinCodes/${st.family.joinCode}`).get().then(s => {
       if (s.exists && s.data().name !== st.family.name) s.ref.update({name: st.family.name}).catch(() => {});
     }).catch(() => {});
@@ -101,6 +106,13 @@ const Cloud = (() => {
   const canEdit = p => !!(p && (mine(p) || (p.cloud && isOwner())));
   // التسميع الصوتي باسم الفرد: لصاحبه، أو لوليّ الأمر إن كان الفرد بلا جوال (غير مربوط بجهاز)
   const canRecite = p => !!(p && (mine(p) || (p.cloud && isOwner() && Array.isArray(p.uids) && !p.uids.length)));
+  // الحلقة لم تعد موجودة (حذفها وليّ أمرها): يُمسح ما يخصّها من هذا الجهاز
+  function cleanupDeleted(){
+    Store.profiles().filter(p => p.cloud).map(p => p.id).forEach(id => Store.removeProfile(id));
+    Store.DB.fid = null; Store.save();
+    if (user) db.doc(`users/${user.uid}`).delete().catch(() => {});
+    st.fid = null; st.family = null;
+  }
   function detach(){
     if (unsubMembers){ unsubMembers(); unsubMembers = null; }
     if (unsubReq){ unsubReq(); unsubReq = null; }
@@ -285,6 +297,32 @@ const Cloud = (() => {
     return s.exists ? {jc, ...s.data()} : null;
   }
 
+  // وليّ الأمر: حذف الحلقة كاملة. القراءات أولًا (تحتاج العضوية)، ثم الحذف، وصلاحية وليّ الأمر آخرًا
+  async function deleteFamily(progress = () => {}){
+    const fid = st.fid, base = db.doc(`families/${fid}`), jc = st.family.joinCode;
+    const delAll = async refs => { for (let i = 0; i < refs.length; i += 400){ const b = db.batch(); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit(); } };
+    progress('جمع البيانات');
+    const members = (await base.collection('members').get()).docs;
+    const sessions = [];
+    for (const m of members) (await m.ref.collection('sessions').get()).docs.forEach(s => sessions.push(s.ref));
+    const requests = (await base.collection('requests').get()).docs.map(d => d.ref);
+    const access = (await base.collection('access').get()).docs;
+    progress('حذف الجلسات'); await delAll(sessions);
+    progress('حذف الأفراد'); await delAll(members.map(m => m.ref));
+    await delAll(requests);
+    await delAll(members.map(m => db.doc(`pub/${m.id}`)));
+    if (jc) await db.doc(`joinCodes/${jc}`).delete().catch(() => {});
+    await db.doc(`fstat/${fid}`).delete().catch(() => {});
+    await delAll(access.filter(a => a.id !== user.uid).map(a => a.ref));
+    progress('حذف الحلقة');
+    await base.delete();
+    await db.doc(`families/${fid}/access/${user.uid}`).delete().catch(() => {});
+    if (unsubMembers){ unsubMembers(); unsubMembers = null; }
+    if (unsubReq){ unsubReq(); unsubReq = null; }
+    if (unsubFam){ unsubFam(); unsubFam = null; }
+    cleanupDeleted(); emit();
+  }
+
   // وليّ الأمر: مكافأة الأسبوع
   async function setReward(reward){
     await db.doc(`families/${st.fid}`).update({reward: reward.slice(0, 80), rewardAt: Date.now()});
@@ -325,6 +363,7 @@ const Cloud = (() => {
     b.set(fref, fam);
     b.set(db.doc(`families/${fid}/access/${user.uid}`), {role: 'owner', at: Date.now()});
     b.set(db.doc(`joinCodes/${jc}`), {fid, name});
+    b.set(db.doc(`fstat/${fid}`), {created: fam.created});
     b.set(db.doc(`users/${user.uid}`), {fid});
     await b.commit();
     await attach(); emit();
@@ -345,7 +384,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
+    deleteFamily, requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };

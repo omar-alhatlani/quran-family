@@ -107,7 +107,7 @@ function viewProfiles(){
     ${familyPanel()}
     <details class="panel" ${ps.length || Cloud.st.ok ? '' : 'open'}><summary>إضافة فرد على هذا الجهاز</summary>${addForm('addForm', 'الاسم', 'إضافة')}</details>`;
   }
-  app.innerHTML = suspendedNote() + (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
+  app.innerHTML = (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
 ${inFam && !isOwner() ? '' : `
     <section class="panel">
       <h3>${inFam ? 'نسخة احتياطية للحلقة كاملة' : 'النسخة الاحتياطية'}</h3>
@@ -187,9 +187,6 @@ const errText = e => ERR[e && (e.message in ERR ? e.message : e.code)] || 'حد�
 const isOwner = () => !!(Cloud.st.family && Cloud.st.user && Cloud.st.family.owner === Cloud.st.user.uid);
 const joinLink = c => location.origin + location.pathname + '?j=' + c;
 
-// الحلقة الموقوفة من المدير: تُعرض بياناتها ولا يُسجَّل فيها شيء
-const suspendedNote = () => Cloud.st.family && Cloud.st.family.suspended
-  ? '<p class="warn">الحلقة موقوفة مؤقتًا من مدير البرنامج: تُعرض بياناتكم، ولا يُسجَّل تسميع أو تعديل حتى تُفعَّل. للاستفسار راسلوا o.alhatlani@gmail.com</p>' : '';
 function familyPanel(){
   const st = Cloud.st;
   if (!st.ok) return '';
@@ -205,6 +202,9 @@ function familyPanel(){
         <p class="small" style="margin:2px 0 8px">اربطه بحساب Google، فيعود إليك على أي جوال بالدخول بـ Google، ولا يضيع إن مُسحت بيانات المتصفّح.</p>
         <button class="btn small primary" id="linkG" type="button">اربط بحساب Google</button></div>` : ''}
       <p style="margin:10px 0 0" class="small">${st.user.email ? esc(st.user.email) + ' · ' : ''}<button class="btn small" id="signOut" type="button">تسجيل الخروج من هذا الجهاز</button></p>${admin}
+      ${isOwner() ? `<details class="danger-zone"><summary class="small">حذف الحلقة كاملة</summary>
+        <p class="small" style="margin:6px 0 8px">يحذف نهائيًّا كل أفراد الحلقة وجلساتهم وطلباتهم وأرقامهم، ويُلغي رمز العائلة. لا يمكن التراجع. يحسن تنزيل نسخة احتياطية قبله.</p>
+        <button class="btn small danger" id="delFam" type="button">حذف الحلقة كاملة</button></details>` : ''}
     </section>`;
   const q = new URLSearchParams(location.search).get('j') || '';
   const g = st.user && !st.user.anon;
@@ -242,6 +242,16 @@ function bindFamilyPanel(){
     await Cloud.signOut(); route();
   });
   if ($('#gIn')) $('#gIn').onclick = () => Cloud.googleSignIn().catch(err);
+  if ($('#delFam')) $('#delFam').onclick = async () => {
+    const name = Cloud.st.family.name;
+    if (!confirm(`حذف «حلقة ${name}» نهائيًّا بكل أفرادها وجلساتهم؟`)) return;
+    const typed = prompt(`للتأكيد اكتب اسم الحلقة كما هو:
+${name}`);
+    if ((typed || '').trim() !== name.trim()) return alert('لم يطابق الاسم، فلم يُحذف شيء.');
+    const b = $('#delFam'); b.disabled = true;
+    try { await Cloud.deleteFamily(step => { b.textContent = step + '…'; }); location.hash = '#/'; route(); alert('حُذفت الحلقة.'); }
+    catch(e){ b.disabled = false; b.textContent = 'حذف الحلقة كاملة'; alert('تعذّر إكمال الحذف: ' + (e.code || e.message) + '. أعد المحاولة؛ يكمل من حيث توقّف.'); }
+  };
   if ($('#gBack')) $('#gBack').onclick = () => Cloud.googleSignIn().catch(err);
   if ($('#linkG')) $('#linkG').onclick = async () => {
     try { await Cloud.linkGoogle(); alert('تمّ الربط. ملفّك الآن محفوظ بحساب Google، ويعود إليك على أي جوال بالدخول به.'); route(true); }
@@ -273,7 +283,6 @@ function viewHome(pid){
       <span><b>${Q.dec(m.juz)}</b> جزء</span><span><b>${Q.dec(m.pages)}</b> وجه</span><span><b>${AR(m.ayat)}</b> آية</span><span><b>${Q.dec(m.pct)}٪</b> من القرآن</span>
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
-    ${p.cloud ? suspendedNote() : ''}
     ${own ? peerBanner() : ''}
     ${own ? majlisCard() : ''}
     ${m.words ? certCard(pid, Cloud.canEdit(p)) : ''}
