@@ -147,13 +147,13 @@ function familyPanel(){
 }
 function bindFamilyPanel(){
   const err = e => { const b = $('#famErr'); if (b){ b.textContent = errText(e); b.hidden = false; } else alert(errText(e)); };
-  const busy = (form, on) => form && $('button, input', form).forEach(x => { x.disabled = on; });
+  const busy = (form, on) => form && $$('button, input', form).forEach(x => { x.disabled = on; });
   if ($('#copyJoin')) $('#copyJoin').onclick = () => {
     const f = Cloud.st.family;
     const t = `انضمّ إلى حلقة ${f.name} لحفظ القرآن الكريم:\n${joinLink(f.joinCode)}\nرمز العائلة: ${f.joinCode}`;
     navigator.clipboard.writeText(t).then(() => { $('#copyJoin').textContent = 'نُسخ ✓'; }).catch(() => prompt('انسخ الرسالة:', t));
   };
-  $('#signOut').forEach(b => b.onclick = async () => {
+  $$('#signOut').forEach(b => b.onclick = async () => {
     if (Cloud.st.fid && !confirm('ستُمسح بيانات العائلة من هذا الجهاز وتبقى محفوظة في السحابة، وتعود إليها بالرمز متى شئت. متابعة؟')) return;
     await Cloud.signOut(); route();
   });
