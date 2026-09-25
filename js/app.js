@@ -494,7 +494,10 @@ function applyPeer(r){
   const graded = rec.ok + rec.wrong + rec.hint;
   rec.pct = graded ? Math.round(rec.ok / graded * 100) : 0;
   rec.kind = Object.keys(per).every(i => mem[i]) ? 'review' : 'new';
-  Store.addSession(pid, rec); Store.touch(pid); Store.hooks.session(pid, rec, true);
+  Store.addSession(pid, rec);
+  // حفظ جديد أتقنه أمام أحد أهله: يُضاف إلى محفوظه
+  if (rec.kind === 'new' && rec.pct >= 90) Object.keys(per).map(Number).filter(i => !mem[i]).forEach(i => Store.setMem(pid, i, i, true));
+  Store.touch(pid); Store.hooks.session(pid, rec, true);
 }
 Cloud.onPeerDone = applyPeer;
 
@@ -536,8 +539,9 @@ function rangePicker(A, B, onChange){
 }
 
 /* «سمّعني»: الحافظ يرسل طلبًا */
-function viewAsk(pid){
+function viewAsk(pid, [s0, a0, b0] = []){
   const p = Store.profile(pid), me = meId();
+  if (s0 && a0) viewAsk.range = {pid, r: [Q.idx(s0, a0), Q.idx(s0, b0 || a0)]};
   if (!Cloud.st.fid || !me || !Cloud.mine(p)) return location.replace('#/home');
   setTop('سمّعني', '#/home');
   let [A, B] = viewAsk.range && viewAsk.range.pid === pid ? viewAsk.range.r : defaultRange(pid);
@@ -650,7 +654,7 @@ function viewListen(_, args){
       const err = Object.values(marks).length, pctv = Math.round((W.length - err) / W.length * 100);
       app.innerHTML = `<section class="panel today met"><h2>أُرسلت النتيجة إلى ${esc(pname(from))}</h2>
         <p style="font-size:34px;font-weight:700;color:var(--accent);margin:6px 0">${AR(pctv)}٪</p>
-        <p class="small">${direct ? 'سُجّلت في ملفّه الآن وحُسبت في مراجعته.' : 'تُسجَّل في ملفّه حين يفتح برنامجه، وتُحسب في مراجعته.'} جزاك الله خيرًا على التسميع.</p>
+        <p class="small">${direct ? 'سُجّلت في ملفّه الآن.' : 'تُسجَّل في ملفّه حين يفتح برنامجه.'} ${pctv >= 90 ? 'وما لم يكن في محفوظه يُضاف إليه لأنه أتقنه.' : 'ولم يبلغ ٩٠٪، فلا يُضاف جديدٌ إلى محفوظه حتى يتقنه.'} جزاك الله خيرًا على التسميع.</p>
         <a class="btn primary" href="#/">رجوع إلى الحلقة</a></section>`;
     } catch(x){ $('#lsend').disabled = false; alert('تعذّر الإرسال. تأكّد من الاتصال ثم أعد المحاولة.'); }
   };
@@ -915,21 +919,16 @@ function hifzCard(pid, mode){
         <span>${itemLabel(x.a, x.b)}</span><span class="wk">${x.done ? '✓' : ''}</span>
         ${!x.done ? `<div class="hz-acts">
           <a class="btn small" href="#/play/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_PLAY} استمع</a>
-          ${mode === 'self' ? `<a class="btn small primary" href="${tasmeeHref(x.a, x.b)}">${ICON.mic} سمّع حفظك</a>
-            <button class="btn small" type="button" data-mark="${x.a}-${x.b}">حفظتُها</button>`
+          ${mode === 'self' ? `<a class="btn small primary" href="${tasmeeHref(x.a, x.b)}">${ICON.mic} سمّع للبرنامج</a>
+            ${Store.profile(pid).cloud ? `<a class="btn small" href="#/ask/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_EAR} سمّعني</a>` : ''}`
           : mode === 'listen' ? `<a class="btn small primary" href="${listenHref(pid, x.a, x.b)}">${ICON_EAR} سمّع له</a>` : ''}
         </div>` : ''}</li>`).join('')}</ol>
       ${hs.complete ? '<p class="metmsg">أتممت حفظ اليوم، زادك الله حفظًا.</p>'
-        : '<p class="small" style="margin:6px 0 0">استمع وكرّر حتى تحفظ، ثم سمّع حفظك؛ فإن أتقنته أُضيف إلى محفوظك.</p>'}
+        : '<p class="small" style="margin:6px 0 0">استمع وكرّر حتى تحفظ، ثم سمّع للبرنامج أو لأحد أهلك؛ فإن أتقنته (٩٠٪ فأكثر) أُضيف إلى محفوظك.</p>'}
     </section>`;
 }
-function bindHifz(pid){
-  $$('[data-mark]').forEach(b => b.onclick = () => {
-    const [a, c] = b.dataset.mark.split('-').map(Number);
-    if (!confirm(`هل حفظت ${itemLabel(a, c)} وسمّعتها لمعلّمك أو لأحد أهلك؟`)) return;
-    Store.setMem(pid, a, c, true); route(true);
-  });
-}
+// لا يُضاف حفظ جديد إلا بتسميع: للبرنامج (٩٠٪ فأكثر) أو لأحد الأهل عبر «سمّعني»
+function bindHifz(){}
 
 /* مشغّل التلاوة للحفظ: كل آية تُكرَّر عددًا يختاره الحافظ، والآية الحالية مظلَّلة */
 const RECITERS = [['Husary_128kbps', 'الحصري'], ['Husary_Muallim_128kbps', 'الحصري (المصحف المعلّم)'], ['Minshawy_Murattal_128kbps', 'المنشاوي'], ['Alafasy_128kbps', 'العفاسي']];
