@@ -314,3 +314,17 @@ body.stage main.wrap{max-width:none}
 .hz-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .play-text .pa{cursor:pointer;border-radius:8px;transition:background .3s}
 .play-text .pa.on{background:var(--hint-bg);box-shadow:0 0 0 3px var(--hint-bg)}
+.protect{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--surface);border:1px dashed var(--accent)}
+
+/* صفحتا الدعوة والانضمام */
+.landing{padding-block:34px 10px}
+.landing h1{font-size:28px}
+.btn.big{font-size:17px;padding:14px 22px;width:100%;max-width:420px;display:flex;margin-inline:auto}
+.linkbtn{font:inherit;background:none;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0}
+.steps{list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;counter-reset:st}
+.steps li{counter-increment:st;display:grid;grid-template-columns:34px 1fr;gap:2px 10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.steps li::before{content:counter(st, arabic-indic);grid-row:span 2;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--cell);font-weight:700}
+.steps li.cur{border-color:var(--accent)}
+.steps li.cur::before{background:var(--accent);color:var(--accent-ink)}
+.steps li.done::before{content:'✓';background:var(--fresh);color:#fff}
+.steps li span{font-size:13px;color:var(--muted)}

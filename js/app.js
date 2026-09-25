@@ -48,6 +48,11 @@ window.addEventListener('hashchange', () => route());
 function viewProfiles(){
   setTop('حلقة البيت');
   const ps = Store.profiles(), inFam = !!(Cloud.st.fid && Cloud.st.family);
+  const qs = new URLSearchParams(location.search);
+  if (Cloud.st.ok && !inFam && qs.get('inv')) return viewInviteLanding(qs.get('inv'));
+  if (Cloud.st.ok && !inFam && qs.get('j')) return viewJoinLanding(qs.get('j').toUpperCase());
+  if (inFam && (qs.get('inv') || qs.get('j'))) clearQuery();
+  const notice = viewProfiles.notice; viewProfiles.notice = '';
   const card = p => {
     const m = Stats.memorized(p.id);
     return `<button class="prof" type="button" data-id="${p.id}">${avatar(p)}<span><b>${esc(p.name)}</b><small>${m.words ? Q.dec(m.juz) + ' جزء · ' + Q.dec(m.pages) + ' وجه' : 'لم يرسم خريطته بعد'}</small>${goalLine(p)}</span></button>`;
@@ -64,6 +69,9 @@ function viewProfiles(){
   if (inFam){
     const me = ps.filter(Cloud.mine), others = ps.filter(p => !Cloud.mine(p));
     const free = others.filter(p => Array.isArray(p.uids) && p.uids.length === 0);
+    // ملفّات مربوطة بأجهزة أخرى (عدا وليّ الأمر، فهو يعود بحساب Google)
+    const taken = others.filter(p => Array.isArray(p.uids) && p.uids.length && !p.uids.includes(Cloud.st.family.owner));
+    const myRelink = (Cloud.st.requests || []).find(r => r.type === 'relink' && r.by === (Cloud.st.user && Cloud.st.user.uid) && r.status === 'pending');
     body = `
     <section class="intro"><h1>${me.length ? 'أهلًا ' + esc(me[0].name) : 'من أنت؟'}</h1>
       <p class="muted">${me.length ? 'اضغط اسمك لتكمل حفظك ومراجعتك.' : 'اختر اسمك إن أضافه وليّ الأمر، أو أضف اسمك.'}</p></section>
@@ -71,7 +79,13 @@ function viewProfiles(){
     <section class="panel today">
       ${free.length ? `<h3>هل أنت أحد هؤلاء؟</h3><div class="row" style="margin-top:8px">${free.map(p => `<button class="btn claim" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>` : ''}
       ${addForm('meForm', free.length ? 'أو أضف اسمك' : 'اسمك', 'دخول باسمي')}
-    </section>`}
+    </section>
+    ${taken.length ? `<section class="panel">
+      <h3>ملفّك موجود لكنه على جهاز آخر؟</h3>
+      <p class="small" style="margin:4px 0 8px">يحدث هذا بعد تغيير الجوال أو مسح بيانات المتصفّح. اضغط اسمك فيصل طلبك إلى وليّ الأمر، وحين يوافق يعود ملفّك كاملًا إلى هذا الجهاز.</p>
+      ${myRelink ? `<p class="metmsg" style="color:var(--hint)">⏳ أُرسل طلبك لربط ملفّ ${esc(pname(myRelink.from))}. انتظر موافقة وليّ الأمر.</p>`
+        : `<div class="row">${taken.map(p => `<button class="btn relink" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>`}
+    </section>` : ''}`}
     ${tankCard()}
     ${peerBanner()}
     ${others.length ? `<h3 style="margin-top:18px">أفراد الحلقة <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
@@ -88,7 +102,7 @@ function viewProfiles(){
     ${familyPanel()}
     <details class="panel" ${ps.length || Cloud.st.ok ? '' : 'open'}><summary>إضافة فرد على هذا الجهاز</summary>${addForm('addForm', 'الاسم', 'إضافة')}</details>`;
   }
-  app.innerHTML = body + `
+  app.innerHTML = (notice ? `<p class="warn">${esc(notice)}</p>` : '') + body + `
     <section class="panel">
       <h3>النسخة الاحتياطية</h3>
       <p class="small">${inFam ? 'بيانات الحلقة محفوظة في السحابة. ويمكنك مع ذلك تنزيل نسخة من هذا الجهاز.' : 'البيانات محفوظة في هذا الجهاز فقط. نزّل نسخة احتياطية بين حين وآخر، ويمكنك استرجاعها في أي جهاز.'}</p>
@@ -99,6 +113,11 @@ function viewProfiles(){
     </section>`;
 
   $$('.prof').forEach(b => b.onclick = () => { Store.cur = b.dataset.id; location.hash = '#/home'; });
+  $$('.relink').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await Cloud.requestRelink(b.dataset.id); }
+    catch(e){ b.disabled = false; alert('تعذّر إرسال الطلب. تأكّد من الاتصال.'); }
+  });
   $$('.claim').forEach(b => b.onclick = async () => {
     b.disabled = true;
     try { await Cloud.claimMember(b.dataset.id); Store.cur = b.dataset.id; location.hash = '#/home'; }
@@ -153,6 +172,9 @@ function familyPanel(){
       <div class="row"><b class="jcode" dir="ltr">${st.family.joinCode}</b>
         <button class="btn small primary" id="copyJoin" type="button">نسخ رابط الانضمام</button></div>
       <p style="margin:12px 0 0"><a class="btn" href="#/majlis">📺 مجلس الجمعة</a> <span class="small">اعرضه على التلفزيون مع العائلة</span></p>
+      ${st.user.anon ? `<div class="protect"><b>🛡️ احمِ ملفّك</b>
+        <p class="small" style="margin:2px 0 8px">اربطه بحساب Google، فيعود إليك على أي جوال بالدخول بـ Google، ولا يضيع إن مُسحت بيانات المتصفّح.</p>
+        <button class="btn small primary" id="linkG" type="button">اربط بحساب Google</button></div>` : ''}
       <p style="margin:10px 0 0" class="small">${st.user.email ? esc(st.user.email) + ' · ' : ''}<button class="btn small" id="signOut" type="button">تسجيل الخروج من هذا الجهاز</button></p>${admin}
     </section>`;
   const q = new URLSearchParams(location.search).get('j') || '';
@@ -167,6 +189,7 @@ function familyPanel(){
         <button class="btn primary" type="submit">انضمّ</button>
       </form>
       <div id="famErr" class="warn" hidden></div>
+      ${g ? '' : '<p class="small" style="margin:10px 0 0">ربطت ملفّك بحساب Google من قبل؟ <button class="btn small" id="gBack" type="button">الدخول بحساب Google</button></p>'}
       <details style="margin-top:12px" ${g ? 'open' : ''}><summary class="small" style="font-weight:600">وليّ أمر معه دعوة؟ أنشئ حلقة لعائلتك</summary>
         ${g ? `<form id="createForm" style="margin-top:10px">
             <p class="small" style="margin:0 0 8px">دخلت باسم ${esc(st.user.email || '')} · <button class="btn small" id="signOut" type="button">خروج</button></p>
@@ -190,6 +213,11 @@ function bindFamilyPanel(){
     await Cloud.signOut(); route();
   });
   if ($('#gIn')) $('#gIn').onclick = () => Cloud.googleSignIn().catch(err);
+  if ($('#gBack')) $('#gBack').onclick = () => Cloud.googleSignIn().catch(err);
+  if ($('#linkG')) $('#linkG').onclick = async () => {
+    try { await Cloud.linkGoogle(); alert('تمّ الربط. ملفّك الآن محفوظ بحساب Google، ويعود إليك على أي جوال بالدخول به.'); route(true); }
+    catch(e){ alert(e.code === 'auth/popup-closed-by-user' ? 'أُغلقت نافذة الدخول قبل إكماله.' : 'تعذّر الربط: ' + (e.code || e.message)); }
+  };
   if ($('#joinForm')) $('#joinForm').onsubmit = async e => {
     e.preventDefault(); busy(e.target, true);
     try { await Cloud.joinFamily($('#jc').value); history.replaceState(null, '', location.pathname + '#/'); route(); }
@@ -505,11 +533,16 @@ Cloud.onPeerDone = applyPeer;
 /* بطاقات الطلبات: الواردة إليّ، والتي أرسلتها */
 function peerBanner(){
   const me = meId(); if (!me || !Cloud.st.fid) return '';
-  const rs = Cloud.st.requests || [];
+  const all = Cloud.st.requests || [], rs = all.filter(r => r.type !== 'relink');
   const incoming = rs.filter(r => r.status === 'pending' && r.from !== me && (r.to === me || r.to == null));
   const mineOut = rs.filter(r => r.from === me && (r.status === 'pending' || (r.status === 'declined' && Date.now() - (r.at || 0) < 864e5)));
-  if (!incoming.length && !mineOut.length) return '';
+  const relinks = isOwner() ? all.filter(r => r.type === 'relink' && r.status === 'pending') : [];
+  if (!incoming.length && !mineOut.length && !relinks.length) return '';
   return `<section class="panel peer">
+    ${relinks.map(r => `<div class="preq">
+      <p><b>${esc(pname(r.from))}</b> يطلب ربط ملفّه بجهاز جديد (غيّر جواله أو مُسحت بياناته).</p>
+      <div class="row"><button class="btn primary small" type="button" data-relink="${r.id}">موافقة</button>
+      <button class="btn small" type="button" data-relno="${r.id}">رفض</button></div></div>`).join('')}
     ${incoming.map(r => `<div class="preq">
       <p><b>${esc(pname(r.from))}</b> يطلب أن ${r.to ? 'تسمّع' : 'يسمّع أحدكم'} له: ${rangeText(r.a, r.b)}</p>
       <div class="row"><a class="btn primary small" href="#/listen/${r.id}">${ICON_EAR} سمّع له</a>
@@ -520,6 +553,12 @@ function peerBanner(){
   </section>`;
 }
 function bindPeerBanner(){
+  $$('[data-relink]').forEach(b => b.onclick = async () => {
+    const r = (Cloud.st.requests || []).find(x => x.id === b.dataset.relink); if (!r) return;
+    if (!confirm(`سيُربط ملفّ ${pname(r.from)} بالجهاز الجديد، ويُفكّ عن جهازه القديم. هل طلبه هو فعلًا؟`)) return;
+    try { await Cloud.approveRelink(r); } catch(e){ alert('تعذّر ذلك. تأكّد من الاتصال.'); }
+  });
+  $$('[data-relno]').forEach(b => b.onclick = () => Cloud.setStatus(b.dataset.relno, 'declined').catch(() => {}));
   $$('[data-decline]').forEach(b => b.onclick = () => Cloud.setStatus(b.dataset.decline, 'declined').catch(() => alert('تعذّر ذلك. تأكّد من الاتصال.')));
   $$('[data-cancel]').forEach(b => b.onclick = () => Cloud.setStatus(b.dataset.cancel, 'cancelled').catch(() => alert('تعذّر ذلك. تأكّد من الاتصال.')));
 }
@@ -989,6 +1028,73 @@ function viewPlay(pid, [s, a, b]){
   $$('.pa').forEach(el => el.onclick = () => { const p = list.findIndex(x => x.i === +el.dataset.i); if (p >= 0) playAt(p); });
   mark();
   cleanup = () => { audio.pause(); audio.src = ''; };
+}
+
+/* ================= صفحتا الدعوة والانضمام (روابط مركّزة) ================= */
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const iosHint = () => IS_IOS ? '<p class="note">على الآيفون استعمل <b>سفاري</b>: إن فُتح الرابط داخل واتساب فاضغط زرّ البوصلة أو «⋯» ثم «فتح في سفاري» قبل المتابعة، ليُحفظ دخولك ويعمل التسميع الصوتي.</p>' : '';
+const clearQuery = () => history.replaceState(null, '', location.pathname + '#/');
+const landingCache = {};
+
+// رابط العائلة (?j=الرمز): «حلقة فلان تدعوك» وزرّ واحد
+async function viewJoinLanding(jc){
+  setTop('حلقة البيت');
+  if (!(jc in landingCache)){
+    app.innerHTML = '<p class="loading">جارٍ فتح الدعوة…</p>';
+    try { landingCache[jc] = await Cloud.peekJoinCode(jc); } catch(e){ landingCache[jc] = null; }
+    if (Cloud.st.fid) return route();   // دخل الحلقة أثناء الانتظار
+  }
+  const info = landingCache[jc];
+  if (!info){ clearQuery(); viewProfiles.notice = 'رمز العائلة في الرابط غير صحيح. اطلب من وليّ الأمر رابطًا جديدًا.'; return viewProfiles(); }
+  app.innerHTML = `
+    <section class="intro landing">
+      <p class="small">دعوة للانضمام</p>
+      <h1>حلقة ${esc(info.name || 'العائلة')} تدعوك</h1>
+      <p class="muted">انضمّ لتحفظ القرآن وتراجعه مع أهلك: وردٌ كل يوم، وتسميعٌ بينكم، وخزّانٌ تملؤونه معًا.</p>
+    </section>
+    ${iosHint()}
+    <button class="btn primary big" id="joinNow" type="button">انضمّ إلى الحلقة</button>
+    <div id="famErr" class="warn" hidden></div>
+    <p class="small" style="text-align:center;margin-top:18px"><button class="linkbtn" id="notMine" type="button">ليست عائلتي</button></p>`;
+  $('#joinNow').onclick = async () => {
+    $('#joinNow').disabled = true;
+    try { await Cloud.joinFamily(info.jc); clearQuery(); route(); }
+    catch(e){ $('#joinNow').disabled = false; const b = $('#famErr'); b.textContent = errText(e); b.hidden = false; }
+  };
+  $('#notMine').onclick = () => { clearQuery(); viewProfiles(); };
+}
+
+// رابط الدعوة (?inv=الرمز): وليّ الأمر ينشئ حلقته بخطوتين
+function viewInviteLanding(inv){
+  setTop('حلقة البيت');
+  const st = Cloud.st, g = st.user && !st.user.anon;
+  app.innerHTML = `
+    <section class="intro landing">
+      <p class="small">دعوة خاصة</p>
+      <h1>أنشئ حلقة عائلتك</h1>
+      <p class="muted">بصفتك وليّ أمر الحلقة: تدعو أهلك، وتتابع حفظهم ومراجعتهم، وتحدّد مكافأة الأسبوع.</p>
+    </section>
+    ${iosHint()}
+    <ol class="steps">
+      <li class="${g ? 'done' : 'cur'}"><b>الدخول بحساب Google</b><span>ليكون حسابك وليّ أمر الحلقة، فتعود إليها من أي جهاز.</span></li>
+      <li class="${g ? 'cur' : ''}"><b>اسم العائلة</b><span>مثل: آل فلان</span></li>
+    </ol>
+    ${g ? `<form id="invForm" class="panel">
+        <p class="small" style="margin:0 0 8px">دخلت باسم ${esc(st.user.email || '')} · <button class="linkbtn" id="invOut" type="button">حساب آخر</button></p>
+        <label for="invName">اسم العائلة</label>
+        <input type="text" id="invName" maxlength="30" required placeholder="مثل: آل فلان">
+        <div style="margin-top:12px"><button class="btn primary big" type="submit">أنشئ الحلقة</button></div>
+      </form>`
+      : '<button class="btn primary big" id="invG" type="button">الدخول بحساب Google</button>'}
+    <div id="famErr" class="warn" hidden></div>`;
+  const err = e => { const b = $('#famErr'); b.textContent = errText(e); b.hidden = false; };
+  if ($('#invG')) $('#invG').onclick = () => Cloud.googleSignIn().catch(err);
+  if ($('#invOut')) $('#invOut').onclick = async () => { await Cloud.signOut(); Cloud.googleSignIn().catch(err); };
+  if ($('#invForm')) $('#invForm').onsubmit = async e => {
+    e.preventDefault(); const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+    try { await Cloud.createFamily($('#invName').value.trim(), inv.toUpperCase()); clearQuery(); route(); }
+    catch(x){ btn.disabled = false; err(x); }
+  };
 }
 
 /* ================= الخريطة ================= */

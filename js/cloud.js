@@ -62,6 +62,9 @@ const Cloud = (() => {
     if (unsubFam) unsubFam();
     unsubFam = db.doc(`families/${fid}`).onSnapshot(s => { if (s.exists){ st.family = {id: fid, ...s.data()}; emit(); } }, () => {});
     Store.DB.fid = fid; Store.save();
+    if (st.family.owner === user.uid) db.doc(`joinCodes/${st.family.joinCode}`).get().then(s => {
+      if (s.exists && s.data().name !== st.family.name) s.ref.update({name: st.family.name}).catch(() => {});
+    }).catch(() => {});
     await uploadLocal();
     if (unsubMembers) unsubMembers();
     unsubMembers = db.collection(`families/${fid}/members`).onSnapshot(snap => {
@@ -84,7 +87,7 @@ const Cloud = (() => {
       // نتيجة جاهزة لفرد يملكه هذا الجهاز: تُطبَّق على ملفّه مرة واحدة
       st.requests.filter(r => { const p = Store.profile(r.from);
         const heard = r.result && Store.profile(r.result.listener);
-        return r.status === 'done' && !r.applied && (mine(p) || (isOwner() && p && ((Array.isArray(p.uids) && !p.uids.length) || mine(heard)))); }).forEach(r => {
+        return r.type !== 'relink' && r.status === 'done' && !r.applied && (mine(p) || (isOwner() && p && ((Array.isArray(p.uids) && !p.uids.length) || mine(heard)))); }).forEach(r => {
         try { if (Cloud.onPeerDone) Cloud.onPeerDone(r); db.doc(`families/${fid}/requests/${r.id}`).update({applied: true}).catch(() => {}); }
         catch(e){ console.error(e); }
       });
@@ -252,6 +255,36 @@ const Cloud = (() => {
     return ref.id;
   }
 
+  /* ---------- حماية هوية الأولاد ---------- */
+  // جهاز جديد يطلب ربط ملفّ موجود (مسح بيانات سفاري أو تغيير الجوال)
+  async function requestRelink(mid){
+    await reqCol().add({type: 'relink', from: mid, to: null, status: 'pending', created: Date.now(), by: user.uid});
+  }
+  // وليّ الأمر يوافق: الملفّ يصير لهذا الجهاز الجديد
+  async function approveRelink(r){
+    await db.doc(`families/${st.fid}/members/${r.from}`).update({uids: [r.by]});
+    await reqCol().doc(r.id).update({status: 'done', at: Date.now()});
+  }
+  // ربط الدخول المجهول بحساب Google: الهوية نفسها، وتعود على أي جهاز بالدخول بـ Google
+  async function linkGoogle(){
+    const provider = new firebase.auth.GoogleAuthProvider(); provider.setCustomParameters({prompt: 'select_account'});
+    try { await auth.currentUser.linkWithPopup(provider); }
+    catch(e){
+      if (e.code === 'auth/popup-blocked') return auth.currentUser.linkWithRedirect(provider);
+      if (e.code === 'auth/credential-already-in-use' && e.credential){ await auth.signInWithCredential(e.credential); return; }
+      throw e;
+    }
+    await auth.currentUser.reload(); user = auth.currentUser;
+    st.user = {uid: user.uid, email: user.email, anon: user.isAnonymous, admin: isAdminUser(user)}; emit();
+  }
+  // قراءة رمز العائلة قبل الانضمام (لعرض اسمها)
+  async function peekJoinCode(jc){
+    jc = jc.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!auth.currentUser) await auth.signInAnonymously();
+    const s = await db.doc(`joinCodes/${jc}`).get();
+    return s.exists ? {jc, ...s.data()} : null;
+  }
+
   // وليّ الأمر: مكافأة الأسبوع
   async function setReward(reward){
     await db.doc(`families/${st.fid}`).update({reward: reward.slice(0, 80), rewardAt: Date.now()});
@@ -291,7 +324,7 @@ const Cloud = (() => {
     }
     b.set(fref, fam);
     b.set(db.doc(`families/${fid}/access/${user.uid}`), {role: 'owner', at: Date.now()});
-    b.set(db.doc(`joinCodes/${jc}`), {fid});
+    b.set(db.doc(`joinCodes/${jc}`), {fid, name});
     b.set(db.doc(`users/${user.uid}`), {fid});
     await b.commit();
     await attach(); emit();
@@ -312,7 +345,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
+    requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
