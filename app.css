@@ -251,3 +251,57 @@ textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1p
 .tankline{display:flex;align-items:center;gap:10px;margin-top:10px;text-decoration:none;color:var(--ink);font-size:13px}
 .tankline .qbar{flex:1;margin:0}
 .tankline.full b{color:var(--gold)}
+
+/* مجلس الجمعة: شاشة عرض داكنة دائمًا، بخطوط تُقرأ من بعيد */
+body.stage{background:#0b1413;color:#e6eeec;padding:0;--ink:#e6eeec;--muted:#9bb3ae;--line:#23362f;--cell:#1b2b28;--accent:#46b8a3;--gold:#d8b25e;--surface:#132421;--bg:#0b1413;--pill:#23362f;--fresh:#5ee39c}
+body.stage .top{display:none}
+body.stage main.wrap{max-width:none}
+.stage-wrap{min-height:100vh;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top,0px)) 3vw calc(10px + env(safe-area-inset-bottom,0px));
+  background-image:radial-gradient(1200px 600px at 80% -10%, #173b35 0%, transparent 60%)}
+.stage-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stage-sp{flex:1}
+.stage-load{margin:auto;font-size:22px;color:var(--muted)}
+.slide{flex:1;display:flex;flex-direction:column;justify-content:center;padding-block:2vh;min-height:0}
+.slide.in{animation:slin .6s ease-out}
+@keyframes slin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.stage-nav{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
+.stage-nav .btn{font-size:18px;min-width:52px}
+.dots{display:flex;gap:8px}
+.dots button{width:12px;height:12px;border-radius:50%;border:0;background:#2e4641;cursor:pointer;padding:0}
+.dots button[aria-current=true]{background:var(--gold)}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:9}
+.mj-h{font-size:clamp(26px,4vw,52px);text-align:center;margin:0 0 3vh;color:var(--gold);font-weight:700}
+.mj-cover{text-align:center}
+.mj-cover h1{font-size:clamp(48px,9vw,120px);margin:1vh 0}
+.mj-basmala{font-family:var(--q);font-size:clamp(22px,3vw,40px);color:var(--muted)}
+.mj-fam{font-size:clamp(22px,3.2vw,44px);color:var(--accent);margin:0}
+.mj-date{font-size:clamp(16px,2vw,26px);color:var(--muted)}
+.mj-sub{font-size:clamp(15px,1.8vw,24px);color:var(--muted);margin:1vh 0 0}
+.mj-big{font-size:clamp(56px,10vw,140px);font-weight:700;color:var(--accent);line-height:1}
+.mj-big.gold,.mj-gold{color:var(--gold)}
+.mj-gold{font-size:clamp(20px,2.6vw,36px);font-weight:700}
+.mj-tank{display:flex;gap:4vw;align-items:center;justify-content:center}
+.mj-tank .tank-svg{width:clamp(140px,20vw,300px);max-width:none}
+.mj-legend{font-size:clamp(16px,2vw,26px)}
+.mj-legend i{width:18px;height:18px}
+.mj-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:2vw}
+.mj-card{background:#132421;border:1px solid #23362f;border-top:4px solid var(--c);border-radius:18px;padding:2vh 1.6vw;font-size:clamp(15px,1.6vw,22px)}
+.mj-card.met{box-shadow:inset 0 0 0 2px var(--fresh)}
+.mj-card-h{display:flex;align-items:center;gap:12px;font-size:clamp(20px,2.2vw,30px)}
+.mj-card .gl{display:flex;justify-content:space-between;margin-top:1.4vh}
+.mj-ok{margin-inline-start:auto;color:var(--fresh);font-size:.7em;font-weight:700}
+.mj-star{text-align:center}
+.mj-star-icon{font-size:clamp(60px,10vw,140px);line-height:1}
+.mj-star h1{font-size:clamp(48px,8vw,110px);margin:1vh 0}
+.mj-reason{font-size:clamp(20px,2.6vw,36px)}
+.mj-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:2vw}
+.mj-stat{background:#132421;border:1px solid #23362f;border-radius:18px;padding:3vh 1vw;text-align:center}
+.mj-stat b{display:block;font-size:clamp(34px,5.5vw,76px);color:var(--accent);font-variant-numeric:tabular-nums;line-height:1.1}
+.mj-stat span{font-size:clamp(14px,1.7vw,22px);color:var(--muted)}
+.mj-ayah{font-family:var(--q);font-size:clamp(30px,4.6vw,64px);line-height:2.1;text-align:center;max-width:1300px;margin-inline:auto}
+.mj-ref{text-align:center;color:var(--gold);font-size:clamp(16px,2vw,26px)}
+.mj-q{text-align:center;font-size:clamp(18px,2.4vw,32px);margin-top:3vh}
+.mj-dua{font-family:var(--q);font-size:clamp(26px,3.6vw,50px);line-height:2;margin-top:4vh}
+@media (max-width:700px){.mj-tank{flex-direction:column}.mj-stats{grid-template-columns:repeat(2,1fr)}}
+@media (prefers-reduced-motion: reduce){.slide.in{animation:none}}
+.slide{overflow:auto}
