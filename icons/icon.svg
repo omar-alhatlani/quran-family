@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0f5f55"/>
+  <!-- مصحف مفتوح على حامل، وفوقه قوس البيت -->
+  <path d="M96 236 L256 116 L416 236" fill="none" stroke="#d4ae5c" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 250 C214 226 166 222 124 232 L124 372 C166 362 214 366 256 390 Z" fill="#f4efe2"/>
+  <path d="M256 250 C298 226 346 222 388 232 L388 372 C346 362 298 366 256 390 Z" fill="#ffffff"/>
+  <path d="M256 250 L256 390" stroke="#0f5f55" stroke-width="6"/>
+  <path d="M150 272 C182 266 212 270 236 280 M150 302 C182 296 212 300 236 310 M150 332 C182 326 212 330 236 340" stroke="#9db2b0" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <path d="M276 280 C300 270 330 266 362 272 M276 310 C300 300 330 296 362 302 M276 340 C300 330 330 326 362 332" stroke="#9db2b0" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <path d="M170 404 L256 430 L342 404" fill="none" stroke="#d4ae5c" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
