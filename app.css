@@ -215,3 +215,20 @@ input[type=number],input[type=date]{font:inherit;color:var(--ink);background:var
 .wlist .wk{color:var(--fresh);font-weight:700;margin-inline-start:6px}
 .wird .gl{display:flex;justify-content:space-between;margin-top:10px;font-size:14px}
 .wird.met{border-color:var(--fresh)}
+
+/* سمّعني */
+.peer{border-color:var(--gold)}
+.preq{display:grid;gap:6px}
+.preq + .preq{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.preq p{margin:0}
+.preq.mine p{color:var(--muted);font-size:14px}
+.btn svg{width:18px;height:18px}
+.actions{grid-template-columns:repeat(auto-fit,minmax(90px,1fr))}
+.choose{display:grid;gap:8px}
+.text.lis .w{border:0;background:none;font:inherit;color:inherit;padding:0 2px;cursor:pointer;border-radius:6px}
+.text.lis .w.lw{color:var(--wrong);background:var(--wrong-bg);text-decoration:underline wavy;text-underline-offset:10px}
+.text.lis .w.lh{color:var(--hint);background:var(--hint-bg)}
+textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.snote{flex-basis:100%;font-size:13px;color:var(--muted)}
+.lisline{display:flex;align-items:center;gap:6px;margin:8px 0 0}
+.lisline svg{width:16px;height:16px;color:var(--accent)}

@@ -25,8 +25,8 @@ const Cloud = (() => {
   const code = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALPHA[b % ALPHA.length]).join('');
   const FV = () => firebase.firestore.FieldValue;
 
-  let auth = null, db = null, user = null, unsubMembers = null;
-  const st = {ok: false, user: null, fid: null, family: null, error: null};
+  let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null;
+  const st = {ok: false, user: null, fid: null, family: null, error: null, requests: []};
   const subs = new Set();
   const emit = () => subs.forEach(f => { try { f(st); } catch(e){} });
 
@@ -74,13 +74,29 @@ const Cloud = (() => {
       });
       if (changed) emit();
     }, () => {});
+    // طلبات «سمّعني» في آخر أسبوعين
+    if (unsubReq) unsubReq();
+    unsubReq = db.collection(`families/${fid}/requests`).where('created', '>=', Date.now() - 14 * 864e5).onSnapshot(snap => {
+      st.requests = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => b.created - a.created);
+      // نتيجة جاهزة لفرد يملكه هذا الجهاز: تُطبَّق على ملفّه مرة واحدة
+      st.requests.filter(r => { const p = Store.profile(r.from);
+        return r.status === 'done' && !r.applied && (mine(p) || (isOwner() && p && Array.isArray(p.uids) && !p.uids.length)); }).forEach(r => {
+        try { if (Cloud.onPeerDone) Cloud.onPeerDone(r); db.doc(`families/${fid}/requests/${r.id}`).update({applied: true}).catch(() => {}); }
+        catch(e){ console.error(e); }
+      });
+      emit();
+    }, () => {});
   }
   const uploadedHere = id => Object.values(Store.DB.alias || {}).includes(id);
   const isOwner = () => !!(st.family && user && st.family.owner === user.uid);
   // الأفراد الذين يملكهم هذا الجهاز
   const mine = p => !!(p && (!p.cloud || (user && Array.isArray(p.uids) && p.uids.includes(user.uid))));
   const canEdit = p => !!(p && (mine(p) || (p.cloud && isOwner())));
-  function detach(){ if (unsubMembers){ unsubMembers(); unsubMembers = null; } st.fid = null; st.family = null; }
+  function detach(){
+    if (unsubMembers){ unsubMembers(); unsubMembers = null; }
+    if (unsubReq){ unsubReq(); unsubReq = null; }
+    st.fid = null; st.family = null; st.requests = [];
+  }
 
   const encodeMem = r => r.map(([a, b]) => a === b ? `${a}` : `${a}-${b}`).join(',');
   const decodeMem = s => !s ? [] : s.split(',').map(x => { const [a, b] = x.split('-').map(Number); return [a, b === undefined ? a : b]; });
@@ -128,7 +144,7 @@ const Cloud = (() => {
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
     return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now(),
-            goal: d.goal || null, nl: d.nl || {}, prog: Stats.week(id), wird: d.wird || null};
+            goal: d.goal || null, nl: d.nl || {}, prog: Stats.week(id), wird: d.wird || null, lis: d.lis || {}};
   }
 
   /* ---------- رفع التعديلات ---------- */
@@ -194,6 +210,21 @@ const Cloud = (() => {
     Store.profiles().filter(p => p.cloud).map(p => p.id).forEach(id => Store.removeProfile(id));
     Store.DB.fid = null; Store.save();
   }
+  /* ---------- «سمّعني» ---------- */
+  const reqCol = () => db.collection(`families/${st.fid}/requests`);
+  // الحافظ يطلب (to = المسمِّع أو null لأي فرد)
+  async function sendRequest(from, to, a, b){
+    return (await reqCol().add({from, to: to || null, a, b, status: 'pending', created: Date.now(), by: user.uid})).id;
+  }
+  const setStatus = (id, status) => reqCol().doc(id).update({status, at: Date.now()});
+  // المسمِّع يرسل النتيجة: لطلب قائم (id) أو لتسميع حضوري جديد (id = null)
+  async function submitResult(id, {from, to, a, b, marks, note}){
+    const listener = Store.profile(to);
+    const result = {marks, note: note || '', t: Date.now(), listener: to, listenerName: listener ? listener.name : ''};
+    if (id) await reqCol().doc(id).update({to, status: 'done', result, applied: false});
+    else await reqCol().add({from, to, a, b, status: 'done', created: Date.now(), by: user.uid, result, applied: false});
+  }
+
   // «هذا أنا»: ربط فرد غير مربوط بهذا الجهاز
   async function claimMember(id){
     await db.doc(`families/${st.fid}/members/${id}`).update({uids: [user.uid]});
@@ -249,6 +280,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
+    sendRequest, setStatus, submitResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };

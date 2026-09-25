@@ -59,6 +59,19 @@ service cloud.firestore {
       }
     }
 
+    // «سمّعني»: طلبات التسميع ونتائجها داخل العائلة. الحافظ (from) يطلب، والمسمِّع (to) يكتب النتيجة،
+    // وجهاز الحافظ وحده يطبّقها على ملفّه (applied).
+    match /families/{fid}/requests/{rid} {
+      allow read: if inFamily(fid);
+      allow create: if inFamily(fid) && request.resource.data.by == request.auth.uid
+        && (isOwner(fid) || ownsMember(fid, request.resource.data.from)
+          || (request.resource.data.to != null && ownsMember(fid, request.resource.data.to)));
+      allow update: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, resource.data.from)
+        || (resource.data.to != null && ownsMember(fid, resource.data.to))
+        || (resource.data.to == null && resource.data.status == 'pending'));
+      allow delete: if inFamily(fid) && (resource.data.by == request.auth.uid || isOwner(fid));
+    }
+
     match /joinCodes/{jc} {
       allow get: if signedIn();
       allow create: if signedIn() && getAfter(fam(request.resource.data.fid)).data.owner == request.auth.uid;
