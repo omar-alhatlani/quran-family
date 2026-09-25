@@ -21,7 +21,11 @@ function setTop(title, back){
   $('#back').hidden = !back;
   $('#back').onclick = () => { location.hash = back; };
   const p = Store.cur && Store.profile(Store.cur);
-  $('#topWho').innerHTML = p && back ? avatar(p, 'sm') : '';
+  // عدّاد ما ينتظرني: طلبات تسميع موجّهة إليّ (أو لأي فرد)، وطلبات ربط لوليّ الأمر
+  const me = typeof meId === 'function' ? meId() : null, rs = Cloud.st.requests || [];
+  const n = me ? rs.filter(r => r.status === 'pending' && (r.type === 'relink' ? isOwner() : r.from !== me && (r.to === me || r.to == null))).length : 0;
+  $('#topWho').innerHTML = (n ? `<a class="badge" href="#/" aria-label="طلبات بانتظارك">🔔 ${AR(n)}</a>` : '') + (p && back ? avatar(p, 'sm') : '');
+  document.title = (n ? `(${n}) ` : '') + 'حلقة البيت';
 }
 function ago(t){
   const d = Store.today() - Math.floor((t - new Date().getTimezoneOffset() * 60000) / 864e5);
@@ -39,7 +43,7 @@ function route(keepScroll){
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
@@ -86,6 +90,7 @@ function viewProfiles(){
       ${myRelink ? `<p class="metmsg" style="color:var(--hint)">⏳ أُرسل طلبك لربط ملفّ ${esc(pname(myRelink.from))}. انتظر موافقة وليّ الأمر.</p>`
         : `<div class="row">${taken.map(p => `<button class="btn relink" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>`}
     </section>` : ''}`}
+    ${majlisCard()}
     ${tankCard()}
     ${peerBanner()}
     ${others.length ? `<h3 style="margin-top:18px">أفراد الحلقة <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
@@ -233,34 +238,32 @@ function bindFamilyPanel(){
 /* ================= الرئيسية ================= */
 function viewHome(pid){
   const p = Store.profile(pid); setTop('حلقة البيت', '#/');
-  $('#topWho').innerHTML = '';
+  const av = $('#topWho .av'); if (av) av.remove();   // يبقى عدّاد الطلبات
   const m = Stats.memorized(pid), sg = Stats.suggest(pid), d = Store.data(pid);
   const recent = d.sess.slice(-5).reverse();
   const edit = Cloud.canEdit(p), own = Cloud.mine(p);
   app.innerHTML = `
     <section class="who">${avatar(p)}<div><h1>${esc(p.name)}</h1><a href="#/" class="small">${own || !p.cloud ? 'تبديل الفرد' : 'رجوع إلى الحلقة'}</a></div></section>
     ${edit ? (own || !p.cloud ? '' : '<p class="note">تدير هذا الملف بصفتك وليّ الأمر.</p>') : '<p class="note">تعرض ملف ' + esc(p.name) + ' للاطّلاع فقط.</p>'}
-    <div class="big">
-      <div><b>${Q.dec(m.juz)}</b><span>جزء</span></div>
-      <div><b>${Q.dec(m.pages)}</b><span>وجه</span></div>
-      <div><b>${AR(m.ayat)}</b><span>آية</span></div>
-      <div><b>${Q.dec(m.pct)}٪</b><span>من القرآن</span></div>
+    <div class="mini-stats" aria-label="المحفوظ">
+      <span><b>${Q.dec(m.juz)}</b> جزء</span><span><b>${Q.dec(m.pages)}</b> وجه</span><span><b>${AR(m.ayat)}</b> آية</span><span><b>${Q.dec(m.pct)}٪</b> من القرآن</span>
     </div>
     <div class="qbar" aria-hidden="true"><i style="width:${m.pct}%"></i></div>
-    ${listenLine(pid)}
-    ${tankLine()}
     ${own ? peerBanner() : ''}
-    ${goalPanel(pid, edit)}
+    ${own ? majlisCard() : ''}
     ${!m.words ? (edit ? `
       <section class="panel today">
-        <h2>ابدأ برسم خريطتك</h2>
-        <p>علّم ما تحفظه من القرآن الآن، بالجزء أو بالسورة أو بالوجه، ليعرف البرنامج ماذا يراجع معك.</p>
-        <a class="btn primary" href="#/map">ارسم خريطتي</a>
+        <h2>لنبدأ</h2>
+        <p>ثلاث خطوات قصيرة: ماذا تحفظ الآن، ثم مستواك، ثم تبدأ يومك.</p>
+        <a class="btn primary" href="#/start">ابدأ</a>
       </section>` : '') : `<div class="today-grid">${hifzCard(pid, reciteMode(pid))}${wirdCard(pid, edit, sg, reciteMode(pid))}</div>`}
+    ${goalPanel(pid, edit)}
+    ${tankLine()}
+    ${listenLine(pid)}
     <nav class="actions">
-      ${Cloud.canRecite(p) ? `<a class="act" href="#/tasmee">${ICON.mic}تسميع</a>` : ''}
-      ${own && p.cloud ? `<a class="act" href="#/ask">${ICON_EAR}سمّعني</a>` : ''}
-      ${!own && p.cloud && meId() ? `<a class="act" href="#/listen/new/${pid}">${ICON_EAR}سمّع له</a>` : ''}
+      ${Cloud.canRecite(p) ? `<a class="act" href="#/tasmee">${ICON.mic}سمّع للبرنامج</a>` : ''}
+      ${own && p.cloud ? `<a class="act" href="#/ask">${ICON_EAR}اطلب تسميعًا</a>` : ''}
+      ${!own && p.cloud && meId() ? `<a class="act" href="#/listen/new/${pid}">${ICON_EAR}سمّع لـ${esc(p.name)}</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
       <a class="act" href="#/report">${ICON.chart}التقرير</a>
     </nav>
@@ -317,8 +320,8 @@ function goalPanel(pid, edit){
   if (!d.goal) return edit && m.words ? `
     <section class="panel goal">
       <h2>ضع هدفك الأسبوعي</h2>
-      <p class="small" style="margin:4px 0 10px">مقدار حفظ جديد كل أسبوع، ودورة مراجعة لمحفوظك، وهدف كبير إن شئت.</p>
-      <a class="btn primary" href="#/goal">ضع هدفي</a>
+      <p class="small" style="margin:4px 0 10px">مقدار حفظ جديد كل أسبوع، ودورة مراجعة لمحفوظك.${Cloud.st.fid ? ' <b>ولن يُحسب لك نصيب في خزّان الحلقة حتى تضعه.</b>' : ''}</p>
+      <a class="btn primary" href="#/start/2">اختر مستواك</a>
     </section>` : '';
   const gs = Stats.goalStatus(pid, Stats.weekShared(pid, edit)), bs = Stats.bigStatus(pid);
   const bar = (label, done, target, unit, ok) => `
@@ -467,7 +470,7 @@ function wirdCard(pid, edit, sg, mode){
   const extra = ws.complete && mode === 'self' && sg ? `<p class="small" style="margin:8px 0 0">مراجعة إضافية إن شئت: <a href="${tasmeeHref(sg.a, sg.b)}">${itemLabel(sg.a, sg.b)}</a></p>` : '';
   return `
       <section class="panel today wird ${ws.complete ? 'met' : ''}">
-        <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page')}</span></div>
+        <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page', true)}</span></div>
         <ol class="wlist">${ws.items.map(x => `<li class="${x.done ? 'done' : ''}">
           ${mode ? `<a href="${segHref(pid, mode, x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
           <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span>${x.wait ? '<span class="wwait">⏳ أُرسلت، تُسجَّل حين يفتح برنامجه</span>' : ''}</li>`).join('')}</ol>
@@ -583,7 +586,7 @@ function viewAsk(pid, [s0, a0, b0] = []){
   const p = Store.profile(pid), me = meId();
   if (s0 && a0) viewAsk.range = {pid, r: [Q.idx(s0, a0), Q.idx(s0, b0 || a0)]};
   if (!Cloud.st.fid || !me || !Cloud.mine(p)) return location.replace('#/home');
-  setTop('سمّعني', '#/home');
+  setTop('اطلب تسميعًا', '#/home');
   let [A, B] = viewAsk.range && viewAsk.range.pid === pid ? viewAsk.range.r : defaultRange(pid);
   const others = Store.profiles().filter(x => x.cloud && x.id !== pid);
   const render = () => {
@@ -614,7 +617,15 @@ function viewAsk(pid, [s0, a0, b0] = []){
     $$('input[name=to]').forEach(x => x.onchange = setWa); setWa();
     $('#send').onclick = async () => {
       $('#send').disabled = true;
-      try { await Cloud.sendRequest(pid, to() || null, A, B); render(); }
+      try {
+        await Cloud.sendRequest(pid, to() || null, A, B);
+        const wa = $('#wa').href;
+        render();
+        app.insertAdjacentHTML('afterbegin', `<section class="panel today met"><h2>أُرسل الطلب ✓</h2>
+          <p class="small" style="margin:4px 0 10px">يظهر في برنامجه حين يفتحه. أخبره الآن ليفتحه:</p>
+          <a class="btn primary" href="${wa}" target="_blank" rel="noopener">أخبره في واتساب</a></section>`);
+        scrollTo(0, 0);
+      }
       catch(e){ $('#send').disabled = false; alert('تعذّر الإرسال. تأكّد من الاتصال.'); }
     };
   };
@@ -706,6 +717,11 @@ function listenLine(pid){
   Object.entries(lis).forEach(([k, v]) => { if (+k >= w){ n += v[0]; words += v[1]; } });
   return n ? `<p class="small lisline">${ICON_EAR} سمّع لأهله هذا الأسبوع ${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')} (${count(words, 'كلمة واحدة', 'كلمتين', 'كلمات', 'كلمة')})</p>` : '';
 }
+
+/* ================= بطاقة مجلس الجمعة (يوم الجمعة فقط) ================= */
+const isFriday = () => (Store.today() + 5) % 7 === 6;
+const majlisCard = () => Cloud.st.fid && isFriday() ? `<a class="panel majlis-card" href="#/majlis">
+  <span class="mc-ic">📺</span><span><b>اليوم الجمعة: وقت مجلس الجمعة</b><span class="small">اجمع أهلك واعرض أسبوعكم على التلفزيون.</span></span></a>` : '';
 
 /* ================= الخزّان العائلي ================= */
 function familyTank(){
@@ -960,7 +976,7 @@ function hifzCard(pid, mode){
         ${!x.done ? `<div class="hz-acts">
           <a class="btn small" href="#/play/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_PLAY} استمع</a>
           ${mode === 'self' ? `<a class="btn small primary" href="${tasmeeHref(x.a, x.b)}">${ICON.mic} سمّع للبرنامج</a>
-            ${Store.profile(pid).cloud ? `<a class="btn small" href="#/ask/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_EAR} سمّعني</a>` : ''}`
+            ${Store.profile(pid).cloud ? `<a class="btn small" href="#/ask/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_EAR} اطلب تسميعًا</a>` : ''}`
           : mode === 'listen' ? `<a class="btn small primary" href="${listenHref(pid, x.a, x.b)}">${ICON_EAR} سمّع له</a>` : ''}
         </div>` : ''}</li>`).join('')}</ol>
       ${hs.complete ? '<p class="metmsg">أتممت حفظ اليوم، زادك الله حفظًا.</p>'
@@ -1097,6 +1113,76 @@ function viewInviteLanding(inv){
   };
 }
 
+/* ================= معالج البداية: ماذا تحفظ؟ ← مستواك ← جاهز ================= */
+const LEVELS = [
+  {k: 'rev',  t: 'مراجعة فقط', d: 'أثبّت ما أحفظه دون حفظ جديد الآن', n: 0, rc: 4},
+  {k: 'lite', t: 'خفيف',       d: 'بداية مريحة',                   n: 1, rc: 6},
+  {k: 'mid',  t: 'متوسط',      d: 'التزام يومي معتدل',              n: 2, rc: 4},
+  {k: 'pro',  t: 'جادّ',        d: 'لمن يريد التقدّم بسرعة',          n: 5, rc: 3}
+];
+function viewStart(pid, [step] = []){
+  const p = Store.profile(pid);
+  if (!Cloud.canEdit(p)) return location.replace('#/home');
+  step = step || 1;
+  const d = Store.data(pid), m = Stats.memorized(pid);
+  if (step === 1 && mapLocked(pid)) step = d.goal ? 3 : 2;
+  setTop('البداية', '#/home');
+  const dots = `<ol class="wiz">${['ماذا تحفظ؟', 'مستواك', 'جاهز'].map((t, k) => `<li class="${k + 1 < step ? 'done' : k + 1 === step ? 'cur' : ''}">${t}</li>`).join('')}</ol>`;
+  if (step === 1){
+    const mm = Store.mem(pid);
+    const juzState = j => { let a = 0, t = 0; for (let i = Q.juzFirst[j]; i <= Q.juzLast[j]; i++){ t++; a += mm[i]; } return a === 0 ? '' : a === t ? 'full' : 'part'; };
+    app.innerHTML = `${dots}
+      <section class="panel">
+        <h2>ماذا تحفظ من القرآن الآن؟</h2>
+        <p class="small" style="margin:4px 0 10px">اضغط كل جزء تحفظه كاملًا. أكثر الأولاد يبدؤون بالجزء ٣٠ (جزء عمّ).</p>
+        <div class="chips">${Array.from({length: 30}, (_, k) => `<button type="button" class="jchip ${juzState(30 - k)}" data-j="${30 - k}">${AR(30 - k)}</button>`).join('')}</div>
+        <p class="small" style="margin:12px 0 0">تحفظ سورًا متفرقة أو بعض الآيات؟ <a href="#/map">علّمها في الخريطة المفصّلة</a> ثم ارجع إلى هنا.</p>
+      </section>
+      <p class="wiz-sum">${m.words ? `محفوظك الآن: <b>${Q.dec(m.juz)}</b> جزء · <b>${Q.dec(m.pages)}</b> وجه · <b>${AR(m.ayat)}</b> آية` : 'لم تعلّم شيئًا بعد.'}</p>
+      <div class="wiz-nav">
+        <a class="btn primary big" href="#/start/2">${m.words ? 'التالي' : 'لا أحفظ شيئًا بعد، التالي'}</a>
+      </div>`;
+    $$('.jchip').forEach(b => b.onclick = () => {
+      const j = +b.dataset.j, full = b.classList.contains('full');
+      Store.setMem(pid, Q.juzFirst[j], Q.juzLast[j], !full); const y = scrollY; viewStart(pid, [1]); scrollTo(0, y);
+    });
+    return;
+  }
+  if (step === 2){
+    const rev = rc => m.pages ? unitTxt(Math.max(1, Math.round(m.pages / rc * 2) / 2), 'page') : '';
+    app.innerHTML = `${dots}
+      <section class="panel">
+        <h2>اختر مستواك</h2>
+        <p class="small" style="margin:4px 0 0">ابدأ بأقلّ مما تظن أنك تقدر عليه، وارفعه بعد شهر إن شئت. يمكنك تغييره متى أردت.</p>
+      </section>
+      <div class="levels">${LEVELS.map(L => `<button type="button" class="level" data-k="${L.k}">
+        <b>${L.t}</b><span class="small">${L.d}</span>
+        <span>${L.n ? `حفظ ${unitTxt(L.n, 'page')} في الأسبوع (نحو ${unitTxt(L.n / 5, 'page')} يوميًّا على ٥ أيام)` : 'بلا حفظ جديد'}</span>
+        <span>${m.pages ? `ومراجعة محفوظك كل ${count(L.rc, 'أسبوع', 'أسبوعين', 'أسابيع', 'أسبوعًا')} (نحو ${rev(L.rc)} في الأسبوع)` : `ومراجعة ما تحفظه كل ${count(L.rc, 'أسبوع', 'أسبوعين', 'أسابيع', 'أسبوعًا')}`}</span>
+      </button>`).join('')}</div>
+      <p class="note">باختيار المستوى تكتمل خريطتك، فلا يُضاف حفظ جديد بعدها إلا بتسميع.</p>
+      <p class="small" style="text-align:center"><a href="#/goal">أريد ضبط الهدف بنفسي</a> · <a href="#/start/1">رجوع</a></p>`;
+    $$('.level').forEach(b => b.onclick = () => {
+      const L = LEVELS.find(x => x.k === b.dataset.k);
+      d.hifz = null;
+      d.goal = {n: L.n, nu: 'page', dy: 5, rc: L.rc, ord: '', big: null, since: (d.goal && d.goal.since) || Store.today(), by: Cloud.st.user ? Cloud.st.user.uid : null};
+      Store.touch(pid); location.hash = '#/start/3';
+    });
+    return;
+  }
+  app.innerHTML = `${dots}
+    <section class="panel today met">
+      <h2>كل شيء جاهز، بارك الله فيك</h2>
+      <p>كل يوم تجد في صفحتك مهمّتين:</p>
+      <ul class="wiz-list">
+        ${d.goal && d.goal.n ? '<li><b>حفظ اليوم</b>: مقطع جديد صغير، تستمع إليه وتكرّره ثم تسمّعه.</li>' : ''}
+        <li><b>ورد المراجعة</b>: ما تراجعه اليوم من محفوظك، يختاره البرنامج من الأضعف والأقدم.</li>
+      </ul>
+      <p class="small">وإذا سمّع لك أحد أهلك أو سمّعت له، امتلأ خزّان الحلقة أسرع.</p>
+      <a class="btn primary big" href="#/home">ابدأ يومك</a>
+    </section>`;
+}
+
 /* ================= الخريطة ================= */
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 // الخريطة مفتوحة للرسم الأول، ثم تُقفل: بزرّ «أنهيت رسم خريطتي» أو تلقائيًّا بوضع أول هدف.
@@ -1137,7 +1223,8 @@ function viewMap(pid){
       </section>` : m.some(x => x) ? `<section class="panel today">
         <h3>ارسم كل ما تحفظه الآن</h3>
         <p class="small" style="margin:4px 0 8px">بعد إنهاء الرسم (أو وضع أول هدف) لا يُضاف حفظ جديد إلا بتسميع.</p>
-        <button class="btn primary" id="lockMap" type="button">أنهيت رسم خريطتي</button>
+        <div class="row"><a class="btn primary" href="#/start/2">التالي: اختر مستواك</a>
+        <button class="btn" id="lockMap" type="button">أنهيت رسم خريطتي</button></div>
       </section>` : ''}
     <section class="panel" ${edit && !locked ? '' : 'hidden'}>
       <h3>تعليم سريع بالجزء</h3>

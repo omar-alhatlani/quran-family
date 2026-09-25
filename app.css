@@ -328,3 +328,26 @@ body.stage main.wrap{max-width:none}
 .steps li.cur::before{background:var(--accent);color:var(--accent-ink)}
 .steps li.done::before{content:'✓';background:var(--fresh);color:#fff}
 .steps li span{font-size:13px;color:var(--muted)}
+
+/* الرئيسية: أرقام مختصرة في سطر، ومهمّة اليوم أولًا */
+.mini-stats{display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 0 6px;font-size:14px;color:var(--muted)}
+.mini-stats b{color:var(--accent);font-size:17px;font-variant-numeric:tabular-nums}
+
+/* معالج البداية */
+.wiz{list-style:none;padding:0;margin:16px 0 4px;display:flex;gap:6px;counter-reset:w}
+.wiz li{flex:1;counter-increment:w;text-align:center;font-size:12px;color:var(--muted);border-top:4px solid var(--cell);padding-top:6px}
+.wiz li.cur{color:var(--ink);font-weight:700;border-color:var(--accent)}
+.wiz li.done{border-color:var(--fresh)}
+.wiz-sum{text-align:center;font-size:14px;color:var(--muted)}
+.wiz-sum b{color:var(--accent)}
+.wiz-nav{margin-block:14px 24px}
+.levels{display:grid;gap:10px;margin-block:12px}
+.level{font:inherit;text-align:start;display:grid;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:var(--ink);cursor:pointer}
+.level b{font-size:18px}
+.level span{font-size:14px}
+.level:hover,.level:focus-visible{border-color:var(--accent);outline:none;box-shadow:inset 0 0 0 1px var(--accent)}
+.wiz-list{padding-inline-start:20px;display:grid;gap:6px}
+.badge{background:var(--wrong);color:#fff;border-radius:999px;padding:2px 10px;font-size:13px;font-weight:700;text-decoration:none}
+.majlis-card{display:flex;gap:12px;align-items:center;text-decoration:none;color:var(--ink);border-color:var(--gold);background:var(--hint-bg)}
+.majlis-card .mc-ic{font-size:30px}
+.majlis-card b{display:block}
