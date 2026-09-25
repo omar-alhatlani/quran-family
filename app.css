@@ -355,3 +355,16 @@ body.stage main.wrap{max-width:none}
 .foot{text-align:center;font-size:12px;color:var(--muted);padding-block:18px 6px}
 .foot a{color:var(--muted)}
 body.stage .foot{display:none}
+
+/* المتشابهات */
+.mut-q{text-align:center;font-size:26px}
+.mut-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-block:10px}
+.mut-opts .btn{font-size:16px;padding:12px}
+.mut-opts .btn.right{background:var(--fresh);color:#fff;border-color:var(--fresh);opacity:1}
+.mut-opts .btn.wrongc{background:var(--wrong-bg);color:var(--wrong);border-color:var(--wrong);opacity:1}
+.mut-no{color:var(--wrong);font-weight:600;margin:10px 0 0}
+.mut-cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px;margin-block:10px}
+.mut-cmp > div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.mut-cmp .q{font-family:var(--q);font-size:22px;line-height:2.1;margin:4px 0 0}
+.mut-cmp mark{background:var(--hint-bg);color:var(--hint);border-radius:4px;padding:0 2px}
+.mutw{color:var(--hint)}
