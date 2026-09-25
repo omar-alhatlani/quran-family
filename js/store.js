@@ -21,17 +21,21 @@ const Store = (() => {
   const today = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 864e5);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-  function data(id){ return DB.d[id] || (DB.d[id] = {mem: [], rev: {}, sess: [], mis: {}, up: 0}); }
+  // معرّف قديم ← جديد بعد رفع الفرد للسحابة (شاشة مفتوحة بالمعرّف القديم تبقى تكتب في مكانها الصحيح)
+  const R = id => { let k = 0; while (DB.alias && DB.alias[id] && k++ < 5) id = DB.alias[id]; return id; };
+  function data(id){ id = R(id); return DB.d[id] || (DB.d[id] = {mem: [], rev: {}, sess: [], mis: {}, up: 0}); }
   // تعديل محلّي: يُحفظ ويُبلَّغ للمزامنة
-  function touch(id){ data(id).up = Date.now(); save(); hooks.changed(id); }
+  function touch(id){ id = R(id); data(id).up = Date.now(); save(); hooks.changed(id); }
 
   function mem(id){
+    id = R(id);
     if (memCache[id]) return memCache[id];
     const m = new Uint8Array(Q.TOTAL_AYAT);
     data(id).mem.forEach(([a, b]) => m.fill(1, a, b + 1));
     return memCache[id] = m;
   }
   function setMem(id, a, b, val){
+    id = R(id);
     const m = mem(id); m.fill(val ? 1 : 0, a, b + 1);
     const ranges = []; let s = -1;
     for (let i = 0; i <= m.length; i++){
@@ -42,9 +46,9 @@ const Store = (() => {
   }
 
   return {
-    get DB(){ return DB; }, hooks, save, today, uid, data, mem, setMem, touch,
+    get DB(){ return DB; }, hooks, R, save, today, uid, data, mem, setMem, touch,
     profiles: () => DB.profiles,
-    profile: id => DB.profiles.find(p => p.id === id),
+    profile: id => DB.profiles.find(p => p.id === R(id)),
     get cur(){ return DB.cur && DB.profiles.find(p => p.id === DB.cur) ? DB.cur : null; },
     set cur(id){ DB.cur = id; save(); },
     addProfile(name, color, id = uid()){
@@ -55,6 +59,7 @@ const Store = (() => {
     renameProfile(oldId, newId){
       const p = DB.profiles.find(x => x.id === oldId); if (!p || oldId === newId) return;
       p.id = newId; DB.d[newId] = DB.d[oldId]; delete DB.d[oldId]; delete memCache[oldId];
+      (DB.alias = DB.alias || {})[oldId] = newId;
       if (DB.cur === oldId) DB.cur = newId; save();
     },
     // نسخة السحابة أحدث: تحلّ محلّ المحلية
@@ -72,7 +77,7 @@ const Store = (() => {
       list.forEach(s => { if (!seen.has(s.id)) d.sess.push(s); });
       d.sess.sort((a, b) => a.t - b.t); save();
     },
-    addSession(id, rec){ const d = data(id); rec.id = rec.id || uid(); d.sess.push(rec); if (d.sess.length > 2000) d.sess.shift(); },
+    addSession(id, rec){ id = R(id); const d = data(id); rec.id = rec.id || uid(); d.sess.push(rec); if (d.sess.length > 2000) d.sess.shift(); },
     pref(k, d){ return k in DB.prefs ? DB.prefs[k] : d; },
     setPref(k, v){ DB.prefs[k] = v; save(); },
     exportJSON: () => JSON.stringify(DB),

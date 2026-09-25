@@ -128,6 +128,7 @@ const Cloud = (() => {
     timers[id] = setTimeout(() => pushMember(id), 1200);
   }
   async function pushMember(id){
+    id = Store.R(id);
     const p = Store.profile(id); if (!p || !st.fid) return;
     if (!p.cloud){ await uploadLocal(); return; }
     await db.doc(`families/${st.fid}/members/${id}`).set(memberDoc(id));
@@ -145,6 +146,7 @@ const Cloud = (() => {
     await db.doc(`pub/${id}`).set(doc, {merge: true});
   }
   async function pushSession(id, rec, isNew){
+    id = Store.R(id);
     const p = Store.profile(id); if (!p || !p.cloud) return schedulePush(id);
     await db.doc(`families/${st.fid}/members/${id}/sessions/${rec.id}`).set(rec);
     if (!isNew) return;
