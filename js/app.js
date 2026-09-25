@@ -118,7 +118,11 @@ ${inFam && !isOwner() ? '' : `
         return `<p class="small ${days < 0 || days > 30 ? 'due' : ''}">${days < 0 ? 'لم تُنزَّل نسخة بعد.' : 'آخر نسخة: ' + ago(t) + (days > 30 ? ' — حان وقت نسخة جديدة.' : '')}</p>`; })() : ''}
       <div class="row">
         <button class="btn" id="exp" type="button">${inFam ? 'تنزيل نسخة الحلقة' : 'تنزيل نسخة احتياطية'}</button>
-        ${inFam ? '' : '<label class="btn" for="imp" style="color:var(--ink);font-size:14px">استرجاع من ملف</label><input type="file" id="imp" accept="application/json,.json" hidden>'}
+        ${inFam ? '<label class="btn" for="impFam" style="color:var(--ink);font-size:14px">استرجاع من نسخة</label><input type="file" id="impFam" accept="application/json,.json" hidden>'
+          : '<label class="btn" for="imp" style="color:var(--ink);font-size:14px">استرجاع من ملف</label><input type="file" id="imp" accept="application/json,.json" hidden>'}
+      </div>
+      ${inFam ? '<p class="small" id="restoreSt" style="margin:8px 0 0">الاسترجاع يضيف ما فُقد ولا يمحو شيئًا مما هو موجود الآن.</p>' : ''}
+      <div>
       </div>
     </section>`}`;
 
@@ -164,6 +168,27 @@ ${inFam && !isOwner() ? '' : `
       const n = members.reduce((t, p) => t + Store.data(p.id).sess.length, 0);
       btn.textContent = `نُزّلت: ${count(members.length, 'فرد واحد', 'فردان', 'أفراد', 'فردًا')} و${count(n, 'جلسة واحدة', 'جلستان', 'جلسات', 'جلسة')}`;
     } catch(e){ btn.disabled = false; btn.textContent = 'تنزيل نسخة الحلقة'; alert('تعذّر جمع البيانات. تأكّد من الاتصال ثم أعد المحاولة.'); }
+  };
+  // وليّ الأمر: استرجاع نسخة الحلقة (دمج آمن)
+  if ($('#impFam')) $('#impFam').onchange = async e => {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    let bk; try { bk = JSON.parse(await file.text()); } catch(x){ return alert('هذا الملف ليس نسخة احتياطية صالحة.'); }
+    if (!bk || bk.kind !== 'family-backup' || !Array.isArray(bk.members)) return alert('هذا الملف ليس نسخة احتياطية لحلقة. نسخة الحلقة تُنزَّل من زرّ «تنزيل نسخة الحلقة».');
+    const nS = bk.members.reduce((t, x) => t + (((x.data || {}).sess) || []).length, 0);
+    const other = bk.family && bk.family.id !== Cloud.st.fid;
+    const msg = `نسخة بتاريخ ${new Date(bk.at).toLocaleDateString('ar-SA-u-ca-gregory', {day: 'numeric', month: 'long', year: 'numeric'})}
+`
+      + `فيها ${count(bk.members.length, 'فرد واحد', 'فردان', 'أفراد', 'فردًا')} و${count(nS, 'جلسة واحدة', 'جلستان', 'جلسات', 'جلسة')}.
+`
+      + (other ? `تنبيه: النسخة من «حلقة ${bk.family.name}» لا من حلقتك الحالية، وستُضاف أفرادها إليها.
+` : '')
+      + 'الاسترجاع يضيف ما فُقد ولا يمحو شيئًا موجودًا. متابعة؟';
+    if (!confirm(msg)) return;
+    const st = $('#restoreSt');
+    try {
+      const r = await Cloud.restoreFamily(bk, p => { st.textContent = 'جارٍ الاسترجاع: ' + p; });
+      st.textContent = `تمّ الاسترجاع: ${count(r.members, 'فرد واحد', 'فردان', 'أفراد', 'فردًا')} و${count(r.sessions, 'جلسة واحدة', 'جلستان', 'جلسات', 'جلسة')}.`;
+    } catch(x){ st.textContent = 'تعذّر إكمال الاسترجاع: ' + (x.code || x.message) + '. أعد المحاولة؛ لا ضرر من التكرار.'; }
   };
   if ($('#imp')) $('#imp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;

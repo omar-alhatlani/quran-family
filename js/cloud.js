@@ -323,6 +323,53 @@ const Cloud = (() => {
     cleanupDeleted(); emit();
   }
 
+  /* ---------- استرجاع نسخة الحلقة (وليّ الأمر) ----------
+     دمج آمن: لا يمحو شيئًا مما هو موجود الآن، ويضيف ما فُقد.
+     المحفوظ: اتحاد · حالة كل آية: الأحدث · مواضع الأخطاء: الأكبر · الشهادات: اتحاد · الهدف: الحالي إن وُجد
+     الجلسات: تُدمج بالمعرّف · الفرد المحذوف يعود بمعرّفه وبياناته */
+  function mergeData(cur, bak){
+    const m = new Uint8Array(Q.TOTAL_AYAT);
+    [...(cur.mem || []), ...(bak.mem || [])].forEach(([a, b]) => m.fill(1, a, b + 1));
+    const ranges = []; let s = -1;
+    for (let i = 0; i <= m.length; i++){ if (i < m.length && m[i]){ if (s < 0) s = i; } else if (s >= 0){ ranges.push([s, i - 1]); s = -1; } }
+    const rev = {...(bak.rev || {})};
+    Object.entries(cur.rev || {}).forEach(([i, v]) => { if (!rev[i] || rev[i][0] <= v[0]) rev[i] = v; });
+    const mis = {...(bak.mis || {})};
+    Object.entries(cur.mis || {}).forEach(([g, c]) => { mis[g] = Math.max(mis[g] || 0, c); });
+    const certs = {...(bak.certs || {}), ...(cur.certs || {})};
+    const nl = {...(bak.nl || {}), ...(cur.nl || {})};
+    const lis = {...(bak.lis || {}), ...(cur.lis || {})};
+    return {mem: ranges, rev, mis, certs, nl, lis, goal: cur.goal || bak.goal || null, mapLock: cur.mapLock || bak.mapLock || null};
+  }
+  async function restoreFamily(bk, progress = () => {}){
+    if (!bk || bk.kind !== 'family-backup' || !Array.isArray(bk.members)) throw new Error('bad-backup');
+    const base = db.doc(`families/${st.fid}`);
+    let k = 0;
+    for (const bm of bk.members){
+      progress(`${++k} / ${bk.members.length}: ${bm.name}`);
+      const ref = base.collection('members').doc(bm.id);
+      const snap = await ref.get();
+      const cx = snap.exists ? snap.data() : null;
+      const cur = cx ? {...cx, mem: decodeMem(cx.mem)} : {};
+      const md = mergeData(cur, bm.data || {});
+      const doc = {name: cx ? cx.name : bm.name, color: cx ? cx.color : bm.color, uids: cx ? (cx.uids || []) : (bm.uids || []),
+                   mem: encodeMem(md.mem), rev: md.rev, mis: md.mis, certs: md.certs, nl: md.nl, lis: md.lis,
+                   goal: md.goal, mapLock: md.mapLock, prog: cx ? (cx.prog || null) : null, wkp: {...((bm.data || {}).wkp || {}), ...((cx && cx.wkp) || {})},
+                   wird: null, hifz: null, up: Date.now()};
+      await ref.set(doc);
+      // الجلسات: كتابة بالمعرّف (لا تكرار)
+      const ss = ((bm.data || {}).sess || []).filter(x => x && x.id);
+      for (let i = 0; i < ss.length; i += 400){ const b = db.batch(); ss.slice(i, i + 400).forEach(x => b.set(ref.collection('sessions').doc(x.id), x)); await b.commit(); }
+      // النسخة المحلية ثم أرقام اللوحة من الجلسات كاملة
+      Store.applyRemote(bm.id, {...doc, mem: md.mem});
+      await loadSessions(bm.id, true);
+      Store.mergeSessions(bm.id, ss);
+      await pushPub(bm.id, Store.data(bm.id).sess);
+    }
+    emit();
+    return {members: bk.members.length, sessions: bk.members.reduce((t, x) => t + (((x.data || {}).sess) || []).length, 0)};
+  }
+
   // وليّ الأمر: مكافأة الأسبوع
   async function setReward(reward){
     await db.doc(`families/${st.fid}`).update({reward: reward.slice(0, 80), rewardAt: Date.now()});
@@ -384,7 +431,7 @@ const Cloud = (() => {
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    deleteFamily, requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
+    deleteFamily, restoreFamily, requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
