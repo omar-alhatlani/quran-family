@@ -286,5 +286,18 @@ const Stats = (() => {
             done: items.filter(x => x.done).reduce((t, x) => t + (hz.unit === 'ayah' ? x.ayat : x.pages), 0)};
   }
 
-  return {hifz, hifzStatus, hifzOrder, contribution, tank, TANK, dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
+  /* مواضع الضعف للتدريب: آيات محفوظة فيها كلمات تكرّر خطؤها، أو آخر تسميع لها بأخطاء كثيرة.
+     الآيات المتجاورة في السورة نفسها تُجمع مقطعًا واحدًا. */
+  function weakItems(id, n = 8){
+    const d = Store.data(id), m = Store.mem(id), score = {};
+    Object.entries(d.mis || {}).forEach(([g, c]) => { if (c > 0){ const i = ayahOfWord(+g); if (m[i]) score[i] = (score[i] || 0) + c; } });
+    Object.entries(d.rev || {}).forEach(([i, r]) => { if (r[1] >= 2 && m[i]) score[i] = (score[i] || 0) + 1; });
+    const top = Object.entries(score).map(([i, s]) => ({i: +i, s})).sort((a, b) => (b.s - a.s) || (a.i - b.i)).slice(0, n).map(x => x.i).sort((a, b) => a - b);
+    const items = [];
+    top.forEach(i => { const L = items[items.length - 1]; if (L && L[1] === i - 1 && Q.sur[i] === Q.sur[L[0]]) L[1] = i; else items.push([i, i]); });
+    return items;
+  }
+  const misTotal = id => Object.values(Store.data(id).mis || {}).reduce((t, c) => t + (c > 0 ? c : 0), 0);
+
+  return {weakItems, misTotal, hifz, hifzStatus, hifzOrder, contribution, tank, TANK, dailyQuota, wird, wirdStatus, weekStart, week, weekShared, goalStatus, bigStatus, memorized, pageInfo, suggest, period, coverage, weekly, weakSpots, ayahOfWord, FRESH_DAYS};
 })();

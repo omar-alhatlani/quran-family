@@ -43,7 +43,7 @@ function route(keepScroll){
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert, drill: viewDrill}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
@@ -324,6 +324,7 @@ function viewHome(pid){
       ${Cloud.canRecite(p) ? `<a class="act" href="#/tasmee">${ICON.mic}سمّع للبرنامج</a>` : ''}
       ${own && p.cloud ? `<a class="act" href="#/ask">${ICON_EAR}اطلب تسميعًا</a>` : ''}
       ${!own && p.cloud && meId() ? `<a class="act" href="#/listen/new/${pid}">${ICON_EAR}سمّع لـ${esc(p.name)}</a>` : ''}
+      ${Cloud.canRecite(p) && Stats.weakItems(pid, 1).length ? `<a class="act" href="#/drill">${ICON_TARGET}مواضع ضعفك</a>` : ''}
       ${Cloud.canRecite(p) ? `<a class="act" href="#/mut">${ICON_TWIN}المتشابهات</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
       <a class="act" href="#/report">${ICON.chart}التقرير</a>
@@ -1407,6 +1408,55 @@ function viewCert(pid, [j]){
   cleanup = () => document.body.classList.remove('cert-mode');
 }
 
+/* ================= تدرّب على مواضع ضعفك ================= */
+let drill = null;   // {pid, items: [[أ، ب]], k, before: مجموع الأخطاء قبل التدريب}
+const ICON_TARGET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>';
+// نصّ مقطع بالعثماني مع تظليل الكلمات التي تكرّر خطؤها
+function weakText(pid, a, b){
+  const mis = Store.data(pid).mis || {};
+  let out = '';
+  for (let i = a; i <= b; i++) Q.ayahWords(i).forEach(w => { out += (mis[w.g] > 0 ? `<mark title="أخطأت فيها ${mis[w.g]}">${w.u}</mark>` : w.u) + ' '; });
+  return out;
+}
+function viewDrill(pid){
+  const p = Store.profile(pid);
+  if (!Cloud.canRecite(p)) return location.replace('#/home');
+  setTop('مواضع ضعفك', '#/home');
+  const items = Stats.weakItems(pid), mis = Store.data(pid).mis || {};
+  if (!items.length){
+    app.innerHTML = `<section class="panel today met"><h2>لا مواضع ضعف الآن</h2>
+      <p class="small">ما شاء الله. تظهر هنا الكلمات التي تتكرّر أخطاؤك فيها أثناء التسميع، وتختفي حين تقرؤها صحيحة.</p>
+      <a class="btn" href="#/home">رجوع</a></section>`;
+    return;
+  }
+  const cnt = (a, b) => { let n = 0; for (let i = a; i <= b; i++) Q.ayahWords(i).forEach(w => { if (mis[w.g] > 0) n += mis[w.g]; }); return n; };
+  app.innerHTML = `
+    <section class="panel">
+      <h2>مواضع ضعفك</h2>
+      <p class="small" style="margin:4px 0 0">المظلَّل كلماتٌ أخطأت فيها أكثر من مرة. سمّع كل مقطع للبرنامج؛ وكلما قرأتها صحيحة خفّ أثرها حتى تزول من هنا.</p>
+    </section>
+    <ol class="drill-list">${items.map(([a, b]) => `<li>
+      <div class="small">${itemLabel(a, b)}${cnt(a, b) ? ` · أخطأت فيها ${count(cnt(a, b), 'مرة', 'مرتين', 'مرات', 'مرة')}` : ''}</div>
+      <p class="q">${weakText(pid, a, b)}</p></li>`).join('')}</ol>
+    <button class="btn primary big" id="dStart" type="button">${ICON.mic} ابدأ التدريب (${count(items.length, 'مقطع واحد', 'مقطعان', 'مقاطع', 'مقطعًا')})</button>`;
+  $('#dStart').onclick = () => {
+    drill = {pid, items, k: 0, before: Stats.misTotal(pid)};
+    const [a, b] = items[0]; location.hash = `#/tasmee/${Q.sur[a]}/${Q.num[a]}/${Q.num[b]}`;
+  };
+}
+// بعد كل تسميع في التدريب: المقطع التالي، أو الخلاصة
+function drillNext(pid, A, B){
+  if (!drill || drill.pid !== pid) return null;
+  const k = drill.items.findIndex(([a, b]) => a === A && b === B);
+  if (k < 0) return null;
+  drill.k = k + 1;
+  if (drill.k < drill.items.length){ const [a, b] = drill.items[drill.k]; return {href: tasmeeHref(a, b), label: `التالي في التدريب (${AR(drill.k + 1)} من ${AR(drill.items.length)})`}; }
+  const healed = Math.max(0, drill.before - Stats.misTotal(pid));
+  const res = {href: '#/drill', label: 'أنهيت التدريب ✓', note: healed ? `خفّ أثر ${count(healed, 'موضع واحد', 'موضعين', 'مواضع', 'موضعًا')} من مواضع ضعفك.` : 'استمرّ، فالمواضع تزول بتكرار القراءة الصحيحة.'};
+  drill = null;
+  return res;
+}
+
 /* ================= الخريطة ================= */
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 // الخريطة مفتوحة للرسم الأول، ثم تُقفل: بزرّ «أنهيت رسم خريطتي» أو تلقائيًّا بوضع أول هدف.
@@ -1624,6 +1674,9 @@ function viewTasmee(pid, [s, a, b]){
     }
   });
   const spans = $$('.w', box), revealed = new Set();
+  // مواضع الضعف: كلمات تكرّر خطؤها، تُؤطَّر وهي مخفية ليتنبّه لها الحافظ
+  const misD = Store.data(pid).mis || {}, weakK = new Set(W.map((w, k) => misD[w.g] > 0 ? k : -1).filter(k => k >= 0));
+  if (weakK.size) $('.mushaf').insertAdjacentHTML('beforebegin', `<p class="note">المؤطَّر بالذهبي ${weakK.size === 1 ? 'موضعٌ أخطأت فيه سابقًا، فانتبه له' : 'مواضع أخطأت فيها سابقًا، فانتبه لها'}.</p>`);
   const pillW = k => (W[k].raw.replace(/\s/g, '').length * 0.42 + 0.5) + 'em';
 
   function render(text){
@@ -1635,6 +1688,7 @@ function viewTasmee(pid, [s, a, b]){
         c = 'w ' + st.st;
         if (st.st === 'ok' && !revealed.has(k)){ revealed.add(k); c += ' fresh'; }
       } else c = k === S.pos && S.running ? 'w h cur' : 'w h';
+      if (weakK.has(k) && /^w h/.test(c)) c += ' weakw';
       if (sp.className !== c) sp.className = c;
       sp.style.minWidth = /^w h( |$)/.test(c) ? pillW(k) : '';
     });
@@ -1676,12 +1730,13 @@ function viewTasmee(pid, [s, a, b]){
     const wr = Stats.wird(pid, false), ws = wr && Stats.wirdStatus(pid, wr);
     const inWird = ws && ws.items.some(x => x.a <= B && x.b >= A);
     const wirdNext = inWird && ws.next, wirdDone = inWird && ws.complete;
+    const dn = showResult.dn !== undefined ? showResult.dn : (showResult.dn = drillNext(pid, A, B));
     const box = $('#result'); box.hidden = false;
     box.innerHTML = `
       <div class="row between">
         <div><div class="score">${AR(c.pct)}٪</div><div class="small">نسبة الكلمات الصحيحة · حُفظت النتيجة</div></div>
         <div class="row"><button class="btn" id="again" type="button">أعد المقطع</button>
-        ${wirdNext ? `<a class="btn primary" href="${tasmeeHref(wirdNext.a, wirdNext.b)}">التالي في الورد</a>` : wirdDone ? `<a class="btn primary" href="#/home">أتممت الورد ✓</a>` : nextA ? `<a class="btn primary" href="#/tasmee/${sur.n}/${nextA}/${Math.min(sur.count, nextA + (b - a))}">المقطع التالي</a>` : `<a class="btn primary" href="#/home">الرئيسية</a>`}</div>
+        ${dn ? `<a class="btn primary" href="${dn.href}">${dn.label}</a>` : wirdNext ? `<a class="btn primary" href="${tasmeeHref(wirdNext.a, wirdNext.b)}">التالي في الورد</a>` : wirdDone ? `<a class="btn primary" href="#/home">أتممت الورد ✓</a>` : nextA ? `<a class="btn primary" href="#/tasmee/${sur.n}/${nextA}/${Math.min(sur.count, nextA + (b - a))}">المقطع التالي</a>` : `<a class="btn primary" href="#/home">الرئيسية</a>`}</div>
       </div>
       <div class="stats">
         <div class="stat okc"><b>${AR(c.ok)}</b><span>صحيحة</span></div>
@@ -1689,6 +1744,7 @@ function viewTasmee(pid, [s, a, b]){
         <div class="stat"><b>${AR(c.skip)}</b><span>متروكة</span></div>
         <div class="stat hc"><b>${AR(c.hint)}</b><span>بتلميح</span></div>
       </div>
+      ${dn && dn.note ? `<p class="metmsg">${dn.note}</p>` : ''}
       <p class="small">سمّعت ${count(c.words, 'كلمة واحدة', 'كلمتين', 'كلمات', 'كلمة')} و${count(c.letters, 'حرفًا واحدًا', 'حرفين', 'أحرف', 'حرفًا')}، وأتممت ${count(c.ayat, 'آية واحدة', 'آيتين', 'آيات', 'آية')}.${c.gap ? ` ولم تُحتسب ${count(c.gap, 'كلمة واحدة', 'كلمتان', 'كلمات', 'كلمة')} ${c.gap === 2 ? 'ضاعتا' : 'ضاعت'} لحظة فتح الميكروفون.` : ''}</p>
       ${newAyat.length && c.pct >= 90 ? `<div class="panel addmem"><b>أحسنت!</b> في هذا المقطع ${count(newAyat.length, 'آية واحدة', 'آيتان', 'آيات', 'آية')} لم تكن في محفوظك.
         <div style="margin-top:8px"><button class="btn primary" id="addMem" type="button">أضفها إلى محفوظي</button></div></div>` : ''}
@@ -1704,7 +1760,7 @@ function viewTasmee(pid, [s, a, b]){
     });
     if (!showResult.scrolled){ box.scrollIntoView({behavior: 'smooth', block: 'start'}); showResult.scrolled = true; }
   }
-  showResult.scrolled = false;
+  showResult.scrolled = false; showResult.dn = undefined;
 }
 
 /* يحفظ نتيجة الجلسة (أو يعيد حسابها بعد «قرأتها صحيحة»): السجلّ، وآخر تسميع لكل آية، ومواضع الأخطاء */
@@ -1796,7 +1852,7 @@ function viewReport(pid){
     ${certList(pid)}
     <section class="panel chart"><h2>الكلمات المسمَّعة أسبوعيًّا</h2>${chart}</section>
     <section class="panel">
-      <h2>مواضع تحتاج انتباهًا</h2>
+      <div class="row between"><h2>مواضع تحتاج انتباهًا</h2>${weak.length && rm === 'self' ? '<a class="btn small primary" href="#/drill">تدرّب عليها</a>' : ''}</div>
       ${weak.length ? `<ul class="list">${weak.map(x => `<li><span><span class="q">${x.word}</span> <span class="small">${Q.label(x.i)} · أخطأت فيها ${count(x.c, 'مرة', 'مرتين', 'مرات', 'مرة')}</span></span>
         ${rm ? `<a class="btn small primary" href="${segHref(pid, rm, x.i, x.i)}">${rm === 'self' ? 'سمّع الآية' : 'سمّع له الآية'}</a>` : ''}</li>`).join('')}</ul>`
         : '<p class="small">لا مواضع ضعف حتى الآن. تظهر هنا الكلمات التي تتكرّر أخطاؤك فيها، وتختفي حين تقرؤها صحيحة.</p>'}

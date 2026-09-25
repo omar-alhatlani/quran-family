@@ -402,3 +402,10 @@ body.stage .foot{display:none}
 }
 .danger-zone{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line)}
 .danger-zone summary{color:var(--wrong)}
+
+/* مواضع الضعف */
+.w.h.weakw{box-shadow:0 0 0 2px var(--gold) inset}
+.drill-list{list-style:none;padding:0;margin:10px 0;display:grid;gap:8px}
+.drill-list li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.drill-list .q{font-family:var(--q);font-size:22px;line-height:2.1;margin:4px 0 0}
+.drill-list mark{background:var(--hint-bg);color:var(--hint);border-radius:4px;padding:0 3px;box-shadow:0 0 0 1px var(--gold)}
