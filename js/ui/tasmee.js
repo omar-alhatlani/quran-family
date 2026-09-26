@@ -172,7 +172,7 @@ function viewTasmee(pid, [s, a, b]){
           <span class="small">آية ${AR(x.w.n)} · ${x.st.st === 'wrong' ? `سُمِع: «${esc(x.st.heard)}»` : 'لم تُقرأ'}${(() => { const j = x.st.st === 'wrong' ? mutHint(x.w.i, x.st.heard) : null; return j !== null ? ` · <b class="mutw">لعلّك انتقلت إلى متشابه: ${Q.label(j)}</b>` : ''; })()}</span></span>
           <button class="btn small" type="button" data-k="${x.k}">${S.fixed.has(x.k) ? 'تراجع' : 'قرأتها صحيحة'}</button></li>`).join('')}</ul>` : ''}`;
     $('#again').onclick = () => route();
-    if ($('#addMem')) $('#addMem').onclick = () => { newAyat.forEach(i => Store.setMem(pid, i, i, true)); $('#addMem').closest('.addmem').innerHTML = '<b>أُضيفت إلى محفوظك.</b> بارك الله في حفظك.'; };
+    if ($('#addMem')) $('#addMem').onclick = () => { newAyat.forEach(i => Store.setMem(pid, i, i, true, true)); $('#addMem').closest('.addmem').innerHTML = '<b>أُضيفت إلى محفوظك.</b> بارك الله في حفظك.'; };
     $$('.errs button').forEach(btn => btn.onclick = () => {
       const k = +btn.dataset.k; S.fixed.has(k) ? S.fixed.delete(k) : S.fixed.add(k);
       saved = applySession(pid, A, B, W, saved); render(); showResult();

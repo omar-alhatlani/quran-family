@@ -15,7 +15,7 @@ function hwCheck(pid, rec){
     if (!x.done && x.passes.length >= HW_DAYS) x.done = day;
     changed = true;
     // حفظ جديد أتقنه: يُضاف إلى محفوظه (فيُحسب في هدفه وفي الخزّان)
-    const m = Store.mem(pid); for (let i = x.a; i <= x.b; i++) if (!m[i]){ Store.setMem(pid, x.a, x.b, true); break; }
+    const m = Store.mem(pid); for (let i = x.a; i <= x.b; i++) if (!m[i]){ Store.setMem(pid, x.a, x.b, true, true); break; }
   });
   if (changed) Store.touch(pid);
 }

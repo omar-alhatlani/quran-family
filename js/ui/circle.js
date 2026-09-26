@@ -115,7 +115,7 @@ ${inFam && !isOwner() ? '' : `
       const out = {v: 1, kind: 'family-backup', at: Date.now(),
         family: {id: fam.id, name: fam.name, joinCode: fam.joinCode, created: fam.created, reward: fam.reward || ''},
         members: members.map(p => ({id: p.id, name: p.name, color: p.color, uids: p.uids || [], data: Store.data(p.id)}))};
-      download(JSON.stringify(out), `حلقة-${fam.name.replace(/s+/g, '-')}-${date}.json`);
+      download(JSON.stringify(out), `حلقة-${fam.name.replace(/\s+/g, '-')}-${date}.json`);
       Store.setPref('famBackup', Date.now());
       const n = members.reduce((t, p) => t + Store.data(p.id).sess.length, 0);
       btn.textContent = `نُزّلت: ${count(members.length, 'فرد واحد', 'فردان', 'أفراد', 'فردًا')} و${count(n, 'جلسة واحدة', 'جلستان', 'جلسات', 'جلسة')}`;

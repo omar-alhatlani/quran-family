@@ -45,7 +45,7 @@ function applyPeer(r){
   Store.addSession(pid, rec);
   hwCheck(pid, rec);
   // حفظ جديد أتقنه أمام أحد أهله: يُضاف إلى محفوظه
-  if (rec.kind === 'new' && rec.pct >= 90) Object.keys(per).map(Number).filter(i => !mem[i]).forEach(i => Store.setMem(pid, i, i, true));
+  if (rec.kind === 'new' && rec.pct >= 90) Object.keys(per).map(Number).filter(i => !mem[i]).forEach(i => Store.setMem(pid, i, i, true, true));
   Store.touch(pid); Store.hooks.session(pid, rec, true);
 }
 Cloud.onPeerDone = applyPeer;

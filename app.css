@@ -443,3 +443,8 @@ body.stage .foot{display:none}
 .rem[open]{flex-basis:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .rem-box{background:var(--surface);border-radius:12px;padding:10px 12px;margin-block:10px}
 input[type=time]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+/* معاينة صورة التقرير */
+.shot-ov{position:fixed;inset:0;z-index:60;background:rgba(10,20,19,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.shot-box{background:var(--surface);border-radius:18px;padding:14px;max-width:520px;width:100%;max-height:100%;overflow:auto}
+.shot-box img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
+.shot-acts{margin-top:12px;flex-wrap:wrap;gap:8px;justify-content:center}

@@ -106,6 +106,28 @@
     const t = memberReportText(p.id);
     ['تقرير الأسبوع · هيثم', 'أيام التسميع', 'المحفوظ', 'واجب المدرسة: سورة الملك'].forEach(s => ok(t.includes(s), 'ينقص: ' + s));
   });
+  await test('التقرير يعرض الأسبوع الذي فيه التسميع (ولو كان اليوم سبتًا)', () => {
+    const p = kid(), t = Store.today(), w = Stats.weekStart(t);
+    eq(reportWeek([p.id]), t === w ? w - 7 : w, 'بلا عمل');
+    const A = Q.idx(112, 1), B = Q.idx(112, 4); recite(A, B); applySession(p.id, A, B, mkW(A, B));
+    eq(reportWeek([p.id]), w, 'بعد التسميع');
+  });
+  await test('حفظ بالتسميع يُحسب جديدًا مهما طال، ولو قبل وضع الهدف', () => {
+    const p = kid(), d = Store.data(p.id), A = Q.idx(2, 1), B = Q.idx(2, 40);
+    d.hw = [{id: 'h', a: A, b: B, due: null, created: Store.today(), passes: []}];
+    applyPeer({id: 'q', from: p.id, a: A, b: B, result: {marks: {}, t: Date.now(), listener: 'L', listenerName: 'أ'}});
+    ok(weekSummary(p.id, Stats.weekStart(Store.today())).np > 3, 'أكثر من ٣ أوجه');
+    Store.setMem(p.id, Q.juzFirst[30], Q.juzLast[30], true); eq(Object.keys(d.nl).length, 1, 'الرسم لا يُحسب');
+  });
+  await test('تقرير الأسبوع صورةً: للفرد وللحلقة', async () => {
+    const p = kid(); Store.setMem(p.id, Q.juzFirst[30], Q.juzLast[30], true); const d = Store.data(p.id);
+    d.goal = {n: 2, nu: 'page', dy: 5, rc: 4, since: Store.today()};
+    d.hw = [{id: 'h', a: Q.idx(67, 1), b: Q.idx(67, 15), due: null, created: Store.today(), passes: []}];
+    const cv = await memberReportImage(p.id); ok(cv.width === 1080 && cv.height > 900, 'مقاس ' + cv.width + '×' + cv.height);
+    const fam = Cloud.st.family; p.cloud = true; Cloud.st.family = {name: 'التجربة', reward: 'نزهة'};
+    try { const c2 = await circleReportImage(); ok(c2.height > 700, 'الحلقة ' + c2.height); ok(circleReportText().includes('حلقة التجربة')); }
+    finally { Cloud.st.family = fam; delete p.cloud; }
+  });
   await test('التذكير اليومي: حدث تقويم متكرّر بتنبيه', async () => {
     let text = null; const orig = URL.createObjectURL;
     URL.createObjectURL = b => { b.text().then(x => { text = x; }); return 'blob:x'; };

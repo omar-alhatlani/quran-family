@@ -39,19 +39,20 @@ const Store = (() => {
     return memCache[id] = m;
   }
   // الحفظ الجديد يُسجَّل بعد وضع الهدف. الإضافة الكبيرة دفعةً واحدة (أكثر من ٣ أوجه) رسمٌ للخريطة لا حفظ جديد.
+  // earned: حفظٌ أُضيف بتسميعٍ ناجح (واجب أو «سمّعني») فيُسجَّل دائمًا مهما كبر، ولو قبل وضع الهدف.
   const BULK_PAGES = 3;
-  function logNew(id, a, b, val){
-    const d = data(id), m = mem(id); if (!d.goal) return;
+  function logNew(id, a, b, val, earned){
+    const d = data(id), m = mem(id); if (!d.goal && !earned) return;
     let p = 0, n = 0;
     for (let i = a; i <= b; i++) if (m[i] !== (val ? 1 : 0)){ p += Q.words[i] / Q.pageWords[Q.page[i]]; n++; }
-    if (!n || p > BULK_PAGES) return;
+    if (!n || (p > BULK_PAGES && !earned)) return;
     const t = today(), e = (d.nl = d.nl || {})[t] || [0, 0], s = val ? 1 : -1;
     d.nl[t] = [+(e[0] + s * p).toFixed(3), e[1] + s * n];
     Object.keys(d.nl).forEach(k => { if (+k < t - 60) delete d.nl[k]; });
   }
-  function setMem(id, a, b, val){
+  function setMem(id, a, b, val, earned){
     id = R(id);
-    logNew(id, a, b, val);
+    logNew(id, a, b, val, earned);
     const m = mem(id); m.fill(val ? 1 : 0, a, b + 1);
     const ranges = []; let s = -1;
     for (let i = 0; i <= m.length; i++){
