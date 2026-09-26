@@ -123,6 +123,11 @@ const Cloud = (() => {
         try { if (Cloud.onPeerDone) Cloud.onPeerDone(r); db.doc(`families/${fid}/requests/${r.id}`).update({applied: true}).catch(() => {}); }
         catch(e){ console.error(e); }
       });
+      // نتيجة سجّلها جهاز آخر في ملفّي (وليّ الأمر يسجّل مباشرة): أعد جلب جلساتي لتظهر في «آخر التسميعات»
+      st.requests.filter(r => r.type !== 'relink' && r.status === 'done' && r.applied && mine(Store.profile(r.from))
+        && !Store.data(r.from).sess.some(s => s.id === 'peer-' + r.id)).forEach(r => {
+        loadSessions(r.from, true).then(emit).catch(() => {});
+      });
       emit();
     }, () => {});
   }

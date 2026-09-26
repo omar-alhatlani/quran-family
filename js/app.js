@@ -688,8 +688,16 @@ function peerBanner(){
   const incoming = rs.filter(r => r.status === 'pending' && r.from !== me && (r.to === me || r.to == null));
   const mineOut = rs.filter(r => r.from === me && (r.status === 'pending' || (r.status === 'declined' && Date.now() - (r.at || 0) < 864e5)));
   const relinks = isOwner() ? all.filter(r => r.type === 'relink' && r.status === 'pending') : [];
-  if (!incoming.length && !mineOut.length && !relinks.length) return '';
+  const seen = Store.pref('seenResults', []);
+  const results = rs.filter(r => r.from === me && r.status === 'done' && r.result && Date.now() - r.result.t < 3 * 864e5 && !seen.includes(r.id));
+  if (!incoming.length && !mineOut.length && !relinks.length && !results.length) return '';
   return `<section class="panel peer">
+    ${results.map(r => { const n = rangeWords(r.a, r.b).length, e = Object.values(r.result.marks || {}).filter(x => x === 'wrong').length,
+        hn = Object.values(r.result.marks || {}).filter(x => x === 'hint').length, pc = n ? Math.round((n - e - hn) / n * 100) : 0;
+      return `<div class="preq res">
+      <p>✓ سمّع لك <b>${esc(r.result.listenerName || pname(r.to))}</b>: ${rangeText(r.a, r.b)} · <b>${AR(pc)}٪</b>${e ? ` · ${count(e, 'خطأ واحد', 'خطآن', 'أخطاء', 'خطأً')}` : ' · بلا أخطاء'}${hn ? ` · ${count(hn, 'فتح واحد', 'فتحان', 'فتحات', 'فتحًا')}` : ''}</p>
+      ${r.result.note ? `<p class="small">«${esc(r.result.note)}»</p>` : ''}
+      <div class="row"><button class="btn small" type="button" data-seen="${r.id}">حسنًا</button></div></div>`; }).join('')}
     ${relinks.map(r => `<div class="preq">
       <p><b>${esc(pname(r.from))}</b> يطلب ربط ملفّه بجهاز جديد (غيّر جواله أو مُسحت بياناته).</p>
       <div class="row"><button class="btn primary small" type="button" data-relink="${r.id}">موافقة</button>
@@ -704,6 +712,7 @@ function peerBanner(){
   </section>`;
 }
 function bindPeerBanner(){
+  $$('[data-seen]').forEach(b => b.onclick = () => { Store.setPref('seenResults', [...Store.pref('seenResults', []), b.dataset.seen].slice(-100)); route(true); });
   $$('[data-relink]').forEach(b => b.onclick = async () => {
     const r = (Cloud.st.requests || []).find(x => x.id === b.dataset.relink); if (!r) return;
     if (!confirm(`سيُربط ملفّ ${pname(r.from)} بالجهاز الجديد، ويُفكّ عن جهازه القديم. هل طلبه هو فعلًا؟`)) return;
@@ -739,7 +748,7 @@ function viewAsk(pid, [s0, a0, b0] = []){
   const others = Store.profiles().filter(x => x.cloud && x.id !== pid);
   const render = () => {
     app.innerHTML = `
-      ${peerBanner()}
+      <div id="askBanner">${peerBanner()}</div>
       <section class="panel">
         <h2>ماذا ستسمّع؟</h2>
         <div style="margin-top:10px">${rangePicker(A, B, (a, b) => { A = a; B = b; viewAsk.range = {pid, r: [a, b]}; render(); })}</div>
@@ -778,6 +787,9 @@ function viewAsk(pid, [s0, a0, b0] = []){
     };
   };
   render();
+  // حين يُجيب المسمِّع (أو يعتذر) تتحدّث اللافتة دون إعادة رسم الصفحة
+  const off = Cloud.subscribe(() => { const bx = $('#askBanner'); if (bx){ bx.innerHTML = peerBanner(); bindPeerBanner(); } });
+  cleanup = () => off();
 }
 
 /* «سمّع له»: المسمِّع يرى النصّ ويعلّم الأخطاء. args: [rid] أو ['new', mid, s, a, b] */

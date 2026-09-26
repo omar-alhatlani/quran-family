@@ -1,6 +1,6 @@
 // تخزين مؤقّت: المصحف من الذاكرة أولًا (لا يتغيّر)، وملفات البرنامج من الشبكة أولًا (لتصل التحديثات فورًا)
-const CACHE = 'halaqa-v32';
-const CORE = ['./', 'index.html', 'app.css?v=32', 'js/quran.js?v=32', 'js/engine.js?v=32', 'js/store.js?v=32', 'js/stats.js?v=32', 'js/cloud.js?v=32', 'js/app.js?v=32', 'data/quran.json?v=1', 'privacy.html', 'data/mutashabihat.json?v=1'];
+const CACHE = 'halaqa-v33';
+const CORE = ['./', 'index.html', 'app.css?v=33', 'js/quran.js?v=33', 'js/engine.js?v=33', 'js/store.js?v=33', 'js/stats.js?v=33', 'js/cloud.js?v=33', 'js/app.js?v=33', 'data/quran.json?v=1', 'privacy.html', 'data/mutashabihat.json?v=1'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
