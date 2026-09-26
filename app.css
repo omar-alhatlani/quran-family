@@ -480,3 +480,4 @@ input[type=time]{font:inherit;color:var(--ink);background:var(--bg);border:1px s
 .rem-i{display:flex;align-items:center;gap:8px}
 .rem-i span{flex:1}
 .rem-i input[type=time]{width:auto}
+.rem-links{display:grid;gap:6px;margin-top:8px}

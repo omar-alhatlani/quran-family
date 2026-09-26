@@ -229,16 +229,31 @@ const REMS = [
   {k: 'kahf', name: 'سورة الكهف', t: '09:00', desc: 'قراءة سورة الكهف يوم الجمعة', path: '#/kahf', weekly: true}
 ];
 const remPrefs = () => ({wird: {on: true, t: Store.pref('remTime', '20:00')}, ...Store.pref('rems', {})});
+const remPad = n => String(n).padStart(2, '0');
+const remYmd = d => `${d.getFullYear()}${remPad(d.getMonth() + 1)}${remPad(d.getDate())}`;
+// البداية: الغد، وللكهف أول جمعة قادمة
+function remStart(r, t){
+  const [hh, mm] = t.split(':').map(Number), d = new Date(Date.now() + 864e5);
+  if (r.weekly) while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
+  d.setHours(hh, mm, 0, 0); return d;
+}
+const remStamp = d => `${remYmd(d)}T${remPad(d.getHours())}${remPad(d.getMinutes())}00`;
+// أندرويد: تطبيقات التقويم فيه (كهونر) قد ترفض استيراد الملف، فالأضمن رابط «إضافة حدث» في تقويم Google لكل تذكير
+const isAndroid = () => /Android/i.test(navigator.userAgent);
+function gcalUrl({k, t}){
+  const r = REMS.find(x => x.k === k), a = remStart(r, t), b = new Date(a.getTime() + 15 * 60e3), url = location.origin + location.pathname + (r.path || '');
+  const q = new URLSearchParams({action: 'TEMPLATE', text: `${r.name} · حلقة البيت`, dates: `${remStamp(a)}/${remStamp(b)}`,
+    details: `${r.desc}\n${url}`, recur: r.weekly ? 'RRULE:FREQ=WEEKLY;BYDAY=FR' : 'RRULE:FREQ=DAILY'});
+  try { q.set('ctz', Intl.DateTimeFormat().resolvedOptions().timeZone); } catch(e){}
+  return 'https://calendar.google.com/calendar/render?' + q.toString();
+}
 function reminderICS(items){
-  const pad = n => String(n).padStart(2, '0'), url = location.origin + location.pathname;
-  const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const pad = remPad, url = location.origin + location.pathname;
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Halaqa Albait//AR', 'CALSCALE:GREGORIAN'];
   items.forEach(({k, t}, n) => {
-    const r = REMS.find(x => x.k === k), [hh, mm] = t.split(':').map(Number);
-    // البداية: الغد، وللكهف أول جمعة قادمة
-    const d = new Date(Date.now() + 864e5); if (r.weekly) while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
+    const r = REMS.find(x => x.k === k), d = remStart(r, t);
     lines.push('BEGIN:VEVENT', `UID:halaqa-${k}-${Date.now()}-${n}@halaqa-albait`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-      `DTSTART:${ymd(d)}T${pad(hh)}${pad(mm)}00`, 'DURATION:PT15M', r.weekly ? 'RRULE:FREQ=WEEKLY;BYDAY=FR' : 'RRULE:FREQ=DAILY',
+      `DTSTART:${remStamp(d)}`, 'DURATION:PT15M', r.weekly ? 'RRULE:FREQ=WEEKLY;BYDAY=FR' : 'RRULE:FREQ=DAILY',
       `SUMMARY:${r.name} · حلقة البيت`, `DESCRIPTION:${r.desc}\\n${url}${r.path || ''}`, `URL:${url}${r.path || ''}`,
       'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:وقت ${r.name}`, 'END:VALARM', 'END:VEVENT');
   });
@@ -254,7 +269,8 @@ function remBox(){
       <input type="checkbox" data-rem="${r.k}" ${v.on ? 'checked' : ''}><span>${r.name}${r.weekly ? ' <span class="small">(كل جمعة)</span>' : ''}</span>
       <input type="time" data-remt="${r.k}" value="${v.t || r.t}" aria-label="ساعة ${r.name}"></label>`; }).join('')}</div>
     <button class="btn small primary" type="button" id="remAdd">أضف المختار إلى تقويم جوالك</button>
-    <p class="small" style="margin:6px 0 0">يُنزَّل ملف تقويم؛ افتحه فيضيف الجوال التذكيرات بتنبيه.</p>`;
+    <div id="remLinks"></div>
+    <p class="small" style="margin:6px 0 0">${isAndroid() ? 'يظهر زرّ لكل تذكير يفتح تقويم Google؛ اضغط «حفظ» في كلٍّ منها.' : 'يُنزَّل ملف تقويم؛ افتحه فيضيف الجوال التذكيرات بتنبيه.'}</p>`;
 }
 // سطر الأزرار في الرئيسية
 function shareRow(pid){
@@ -274,7 +290,10 @@ function bindShare(pid){
     Store.setPref('rems', P); if (P.wird) Store.setPref('remTime', P.wird.t);
     const items = Object.entries(P).filter(([, v]) => v.on).map(([k, v]) => ({k, t: v.t}));
     if (!items.length) return alert('اختر تذكيرًا واحدًا على الأقل.');
-    reminderICS(items);
+    if (!isAndroid()) return reminderICS(items);
+    $('#remLinks').innerHTML = `<div class="rem-links">${items.map(it => `<a class="btn small" target="_blank" rel="noopener" href="${gcalUrl(it)}">📅 أضف: ${REMS.find(r => r.k === it.k).name}</a>`).join('')}
+      <button class="btn small" type="button" id="remIcs">أو نزّل ملف التقويم</button></div>`;
+    $('#remIcs').onclick = () => reminderICS(items);
   };
   if ($('#shareCircle')) $('#shareCircle').onclick = async () => {
     const b = $('#shareCircle'); b.disabled = true;

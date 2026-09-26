@@ -138,6 +138,13 @@
     ok(text.endsWith('\r\n') && text.slice(0, -2).split('\r\n').every(l => /^[A-Z]+[:;]/.test(l)), 'كل سطر حقل تقويم سليم');
   });
 
+  await test('أندرويد: رابط تقويم Google لكل تذكير متكرّر', () => {
+    const u = new URL(gcalUrl({k: 'kahf', t: '10:00'})), q = u.searchParams, d = q.get('dates').split('/');
+    eq(q.get('action'), 'TEMPLATE'); eq(q.get('recur'), 'RRULE:FREQ=WEEKLY;BYDAY=FR'); ok(q.get('text').includes('سورة الكهف'));
+    ok(/T100000$/.test(d[0]) && /T101500$/.test(d[1]), 'الساعة ' + d);
+    const y = d[0].slice(0, 8), dt = new Date(+y.slice(0, 4), +y.slice(4, 6) - 1, +y.slice(6, 8)); eq(dt.getDay(), 5, 'يبدأ يوم جمعة');
+    eq(new URL(gcalUrl({k: 'adhm', t: '07:00'})).searchParams.get('recur'), 'RRULE:FREQ=DAILY');
+  });
   /* ---------- الأذكار والكهف ---------- */
   await test('الأذكار: الصباح والمساء من حصن المسلم بصيغتيهما', async () => {
     const A = await loadAdhkar();
