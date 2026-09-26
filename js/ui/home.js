@@ -24,6 +24,7 @@ function viewHome(pid){
         <a class="btn primary" href="#/start">ابدأ</a>
       </section>` : '') : `<div class="today-grid">${hifzCard(pid, reciteMode(pid))}${wirdCard(pid, edit, sg, reciteMode(pid))}</div>`}
     ${goalPanel(pid, edit)}
+    ${edit && m.words ? shareRow(pid) : ''}
     ${tankLine()}
     ${listenLine(pid)}
     <nav class="actions">
@@ -40,7 +41,7 @@ function viewHome(pid){
     ${!p.cloud || isOwner() ? `<p class="row" style="justify-content:center;margin-top:24px">
       ${p.cloud && !own && Array.isArray(p.uids) && p.uids.length ? '<button class="btn small" id="rel" type="button">السماح بربطه بجهاز جديد</button>' : ''}
       <button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>` : ''}`;
-  bindPeerBanner(); bindHifz(pid); bindHw(pid);
+  bindPeerBanner(); bindHifz(pid); bindHw(pid); bindShare(pid);
   if ($('#rel')) $('#rel').onclick = async () => {
     if (!confirm(`سيُفكّ ربط ${p.name} بجهازه الحالي، ثم يختار «أنا ${p.name}» من جواله الجديد. متابعة؟`)) return;
     try { await Cloud.releaseMember(pid); viewHome(pid); } catch(e){ alert('تعذّر ذلك. تأكّد من الاتصال.'); }

@@ -137,7 +137,11 @@ function viewStart(pid, [step] = []){
         <li><b>ورد المراجعة</b>: ما تراجعه اليوم من محفوظك، يختاره البرنامج من الأضعف والأقدم.</li>
       </ul>
       <p class="small">وإذا سمّع لك أحد أهلك أو سمّعت له، امتلأ خزّان الحلقة أسرع.</p>
+      <div class="rem-box"><b>⏰ تذكير يومي</b>
+        <div class="row" style="margin-top:6px"><label for="remT">الساعة</label><input type="time" id="remT" value="${Store.pref('remTime', '20:00')}">
+        <button class="btn small" type="button" id="remAdd">أضفه إلى تقويم جوالك</button></div></div>
       <a class="btn primary big" href="#/home">ابدأ يومك</a>
     </section>`;
+  bindShare(pid);
 }
 

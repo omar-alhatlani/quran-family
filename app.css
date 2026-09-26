@@ -435,3 +435,11 @@ body.stage .foot{display:none}
 .hw-edit{border-color:var(--accent)!important}
 .preq.res p{margin:0}
 .preq.res{background:var(--accent-soft);border-radius:10px;padding:8px 10px}
+
+/* تقرير الأسبوع والتذكير */
+.share-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-block:8px}
+.rem summary{list-style:none;cursor:pointer}
+.rem summary::-webkit-details-marker{display:none}
+.rem[open]{flex-basis:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.rem-box{background:var(--surface);border-radius:12px;padding:10px 12px;margin-block:10px}
+input[type=time]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 10px}

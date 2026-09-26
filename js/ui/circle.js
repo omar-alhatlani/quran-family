@@ -97,7 +97,7 @@ ${inFam && !isOwner() ? '' : `
     Store.cur = p.id; location.hash = '#/home';
   }; };
   bindAdd('addForm', false); bindAdd('meForm', false); bindAdd('otherForm', true);
-  bindPeerBanner(); bindTank(); bindOverview(); bindCircles();
+  bindPeerBanner(); bindTank(); bindOverview(); bindCircles(); bindShare(null);
   bindFamilyPanel();
   const download = (txt, name) => {
     const blob = new Blob([txt], {type: 'application/json'});
@@ -180,7 +180,7 @@ function overviewTable(){
     return `<tr data-id="${p.id}"><td>${avatar(p, 'sm')} ${esc(p.name)}</td><td>${Q.dec(m.pages)}</td><td>${c.hasGoal ? AR(Math.round(c.base)) + '٪' : '—'}</td><td>${wird}</td><td>${hifz}</td><td>${hwBrief(p.id)}</td><td>${lastTxt}</td></tr>`;
   }).join('');
   return `<section class="panel ov">
-    <h2>متابعة الحلقة</h2>
+    <div class="row between"><h2>متابعة الحلقة</h2><button class="btn small" type="button" id="shareCircle">📤 تقرير الحلقة</button></div>
     <div class="ov-wrap"><table>
       <thead><tr><th>${isSchool() ? 'الطالب' : 'الفرد'}</th><th>المحفوظ (وجه)</th><th>هدف الأسبوع</th><th>ورد اليوم</th><th>حفظ اليوم</th><th>واجب المدرسة</th><th>آخر تسميع</th></tr></thead>
       <tbody>${rows}</tbody></table></div>

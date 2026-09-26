@@ -98,11 +98,27 @@
     eq(Stats.weakItems(p.id).map(([a, b]) => itemLabel(a, b)), ['سورة النبأ: من الآية ١٣ إلى الآية ١٤', 'سورة الفجر: الآية ٥']);
   });
 
+  /* ---------- تقرير الأسبوع والتذكير ---------- */
+  await test('تقرير الأسبوع: نصّ فيه الاسم والمحفوظ والواجب', () => {
+    const p = kid(); Store.setMem(p.id, Q.juzFirst[30], Q.juzLast[30], true); const d = Store.data(p.id);
+    d.goal = {n: 2, nu: 'page', dy: 5, rc: 4, since: Store.today()};
+    d.hw = [{id: 'h', a: Q.idx(67, 1), b: Q.idx(67, 15), due: null, created: Store.today(), passes: []}];
+    const t = memberReportText(p.id);
+    ['تقرير الأسبوع · هيثم', 'أيام التسميع', 'المحفوظ', 'واجب المدرسة: سورة الملك'].forEach(s => ok(t.includes(s), 'ينقص: ' + s));
+  });
+  await test('التذكير اليومي: حدث تقويم متكرّر بتنبيه', async () => {
+    let text = null; const orig = URL.createObjectURL;
+    URL.createObjectURL = b => { b.text().then(x => { text = x; }); return 'blob:x'; };
+    const click = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function(){};
+    try { reminderICS(20, 30); await wait(100); } finally { URL.createObjectURL = orig; HTMLAnchorElement.prototype.click = click; }
+    ['BEGIN:VCALENDAR', 'RRULE:FREQ=DAILY', 'T203000', 'BEGIN:VALARM', 'ورد القرآن'].forEach(s => ok(text && text.includes(s), 'ينقص: ' + s));
+  });
+
   /* ---------- الشاشات: كلّها تُعرض بلا أخطاء ---------- */
   await test('الشاشات تُعرض', async () => {
     const p = kid(); Store.setMem(p.id, Q.juzFirst[30], Q.juzLast[30], true);
     Store.data(p.id).goal = {n: 2, nu: 'page', dy: 5, rc: 4, since: Store.today()};
-    const routes = ['#/', '#/home', '#/map', '#/tasmee/67/1/5', '#/report', '#/goal', '#/start/2', '#/drill', '#/mut', '#/play/67/1/5', '#/play/wird', '#/cert/30'];
+    const routes = ['#/', '#/home', '#/map', '#/tasmee/67/1/5', '#/report', '#/goal', '#/start/2', '#/drill', '#/mut', '#/play/67/1/5', '#/play/wird', '#/cert/30', '#/start/3'];
     for (const h of routes){
       location.hash = h; await wait(350);
       ok(document.querySelector('#app').innerText.trim().length > 20, 'شاشة فارغة: ' + h);

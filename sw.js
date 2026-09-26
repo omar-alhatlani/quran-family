@@ -1,6 +1,6 @@
 // تخزين مؤقّت: المصحف من الذاكرة أولًا (لا يتغيّر)، وملفات البرنامج من الشبكة أولًا (لتصل التحديثات فورًا)
-const CACHE = 'halaqa-v35';
-const CORE = ['./', 'index.html', 'app.css?v=35', 'js/quran.js?v=35', 'js/engine.js?v=35', 'js/store.js?v=35', 'js/stats.js?v=35', 'js/cloud.js?v=35', 'js/ui/base.js?v=35', 'js/ui/circle.js?v=35', 'js/ui/home.js?v=35', 'js/ui/peer.js?v=35', 'js/ui/week.js?v=35', 'js/ui/hifz.js?v=35', 'js/ui/onboard.js?v=35', 'js/ui/mut.js?v=35', 'js/ui/cert.js?v=35', 'js/ui/drill.js?v=35', 'js/ui/hw.js?v=35', 'js/ui/map.js?v=35', 'js/ui/tasmee.js?v=35', 'js/ui/report.js?v=35', 'js/ui/boot.js?v=35', 'data/quran.json?v=1', 'privacy.html', 'data/mutashabihat.json?v=1'];
+const CACHE = 'halaqa-v36';
+const CORE = ['./', 'index.html', 'app.css?v=36', 'js/quran.js?v=36', 'js/engine.js?v=36', 'js/store.js?v=36', 'js/stats.js?v=36', 'js/cloud.js?v=36', 'js/ui/base.js?v=36', 'js/ui/circle.js?v=36', 'js/ui/home.js?v=36', 'js/ui/peer.js?v=36', 'js/ui/week.js?v=36', 'js/ui/hifz.js?v=36', 'js/ui/onboard.js?v=36', 'js/ui/mut.js?v=36', 'js/ui/cert.js?v=36', 'js/ui/drill.js?v=36', 'js/ui/hw.js?v=36', 'js/ui/map.js?v=36', 'js/ui/tasmee.js?v=36', 'js/ui/report.js?v=36', 'js/ui/share.js?v=36', 'js/ui/boot.js?v=36', 'data/quran.json?v=1', 'privacy.html', 'data/mutashabihat.json?v=1'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
