@@ -75,7 +75,7 @@ function viewProfiles(){
     const me = ps.filter(Cloud.mine), others = ps.filter(p => !Cloud.mine(p));
     const free = others.filter(p => Array.isArray(p.uids) && p.uids.length === 0);
     // ملفّات مربوطة بأجهزة أخرى (عدا وليّ الأمر، فهو يعود بحساب Google)
-    const taken = others.filter(p => Array.isArray(p.uids) && p.uids.length && !p.uids.includes(Cloud.st.family.owner));
+    const taken = others.filter(p => Array.isArray(p.uids) && p.uids.length && !p.uids.includes(Cloud.st.family.owner) && !p.uids.includes('~owner'));
     const myRelink = (Cloud.st.requests || []).find(r => r.type === 'relink' && r.by === (Cloud.st.user && Cloud.st.user.uid) && r.status === 'pending');
     body = `
     <section class="intro"><h1>${me.length ? 'أهلًا ' + esc(me[0].name) : 'من أنت؟'}</h1>
@@ -299,7 +299,7 @@ function familyPanel(){
       <p class="small" style="margin:4px 0 8px">أرسل ${T('code')} لـ${T('yourPeople')} ليدخلوا من جوالاتهم${isSchool() ? '' : '، ويرى كل واحد تقدّم الحلقة'}.</p>
       <div class="row"><b class="jcode" dir="ltr">${st.family.joinCode}</b>
         <button class="btn small primary" id="copyJoin" type="button">نسخ رابط الانضمام</button></div>
-      <p style="margin:12px 0 0"><a class="btn" href="#/majlis">📺 ${T('majlis')}</a> <span class="small">${T('majlisWhere')}</span></p>
+      ${seesOthers() ? `<p style="margin:12px 0 0"><a class="btn" href="#/majlis">📺 ${T('majlis')}</a> <span class="small">${T('majlisWhere')}</span></p>` : ''}
       ${circlesPanel()}
       ${st.user.anon ? `<div class="protect"><b>🛡️ احمِ ملفّك</b>
         <p class="small" style="margin:2px 0 8px">اربطه بحساب Google، فيعود إليك على أي جوال بالدخول بـ Google، ولا يضيع إن مُسحت بيانات المتصفّح.</p>
@@ -866,11 +866,22 @@ function listenLine(pid){
 
 /* ================= بطاقة مجلس الجمعة (يوم الجمعة فقط) ================= */
 const isFriday = () => (Store.today() + 5) % 7 === (isSchool() ? 5 : 6);   // الخميس آخر أيام الدراسة
-const majlisCard = () => Cloud.st.fid && isFriday() ? `<a class="panel majlis-card" href="#/majlis">
+const majlisCard = () => Cloud.st.fid && isFriday() && seesOthers() ? `<a class="panel majlis-card" href="#/majlis">
   <span class="mc-ic">📺</span><span><b>اليوم ${isSchool() ? 'الخميس' : 'الجمعة'}: وقت ${T('majlis')}</b><span class="small">${isSchool() ? 'اجمع طلابك واعرض أسبوعهم على شاشة الفصل.' : 'اجمع أهلك واعرض أسبوعكم على التلفزيون.'}</span></span></a>` : '';
 
 /* ================= الخزّان العائلي ================= */
 function familyTank(){
+  // الطالب في الحلقة المدرسية لا يقرأ ملفّات زملائه: الخزّان من الأنصبة المنشورة (أرقام بلا بيانات)
+  if (isSchool() && !isOwner()){
+    const w = Stats.weekStart(Store.today()), sh = Cloud.st.shares || {};
+    const parts = Store.profiles().filter(p => p.cloud).map(p => {
+      if (Cloud.mine(p)) return {p, ...Stats.contribution(p.id, true)};
+      const s = sh[p.id], ok = s && s.w === w;
+      return {p, pct: ok ? s.pct : 0, base: ok ? s.base : 0, bonus: ok ? s.bonus : 0, hasGoal: !!(s && s.has)};
+    });
+    const cap = parts.filter(x => x.hasGoal).length * 100, sum = parts.reduce((t, x) => t + x.pct, 0);
+    return {parts, cap, sum, fill: cap ? sum / cap : 0, full: cap > 0 && sum >= cap};
+  }
   const ps = Store.profiles().filter(p => p.cloud).map(p => ({p, local: Cloud.canRecite(p)}));
   return Stats.tank(ps);
 }

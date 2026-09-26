@@ -91,9 +91,17 @@ const Store = (() => {
     applyRemote(id, {name, color, uids, mem: ranges, rev, mis, up, goal, nl, prog, wird, lis, wkp, hifz, mapLock, certs}){
       let p = DB.profiles.find(x => x.id === id);
       if (!p){ p = {id, name, color, created: Date.now()}; DB.profiles.push(p); }
-      p.name = name; p.color = color; p.cloud = true; p.uids = Array.isArray(uids) ? uids : null;
+      p.name = name; p.color = color; p.cloud = true; p.roster = false; p.uids = Array.isArray(uids) ? uids : null;
       const d = data(id);
       if ((up || 0) > (d.up || 0)){ Object.assign(d, {mem: ranges, rev: rev || {}, mis: mis || {}, up, goal: goal || null, nl: nl || {}, prog: prog || null, wird: wird || null, lis: lis || {}, wkp: wkp || {}, hifz: hifz || null, mapLock: mapLock || null, certs: certs || {}}); delete memCache[id]; }
+      save();
+    },
+    // من قائمة الأسماء (الحلقة المدرسية): اسم ولون فقط لزميل لا تُقرأ بياناته. لا يلمس ملفًّا كاملًا
+    applyRoster(id, {name, color, free, owner}){
+      let p = DB.profiles.find(x => x.id === id);
+      if (p && !p.roster) return;
+      if (!p){ p = {id, created: Date.now()}; DB.profiles.push(p); }
+      Object.assign(p, {name, color, cloud: true, roster: true, uids: free ? [] : [owner ? '~owner' : '~other']});
       save();
     },
     // جلسات من السحابة تُدمج بالمعرّف

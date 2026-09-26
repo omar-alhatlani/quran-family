@@ -25,8 +25,11 @@ const Cloud = (() => {
   const code = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALPHA[b % ALPHA.length]).join('');
   const FV = () => firebase.firestore.FieldValue;
 
-  let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null, unsubFam = null;
-  const st = {ok: false, user: null, fid: null, family: null, error: null, requests: [], circles: []};
+  let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null, unsubFam = null, unsubRoster = null, unsubShares = null;
+  const st = {ok: false, user: null, fid: null, family: null, error: null, requests: [], circles: [], shares: {}};
+  // الحلقة المدرسية: الطالب لا يقرأ إلا ملفّه (القواعد تفرض ذلك)
+  const schoolStudent = () => !!(st.family && st.family.type === 'school' && user && st.family.owner !== user.uid);
+  const isSchoolFam = () => !!(st.family && st.family.type === 'school');
   const subs = new Set();
   const emit = () => subs.forEach(f => { try { f(st); } catch(e){} });
 
@@ -79,7 +82,8 @@ const Cloud = (() => {
     }).catch(() => {});
     await uploadLocal();
     if (unsubMembers) unsubMembers();
-    unsubMembers = db.collection(`families/${fid}/members`).onSnapshot(snap => {
+    const memQ = schoolStudent() ? db.collection(`families/${fid}/members`).where('uids', 'array-contains', user.uid) : db.collection(`families/${fid}/members`);
+    unsubMembers = memQ.onSnapshot(snap => {
       let changed = false;
       snap.docChanges().forEach(ch => {
         if (ch.doc.metadata.hasPendingWrites) return;   // صدى كتابة هذا الجهاز
@@ -89,9 +93,25 @@ const Cloud = (() => {
         Store.applyRemote(ch.doc.id, {...x, mem: decodeMem(x.mem)});
         if (!Array.isArray(x.uids) && (uploadedHere(ch.doc.id) || isOwner()))
           ch.doc.ref.update({uids: uploadedHere(ch.doc.id) ? [user.uid] : []}).catch(() => {});
+        // المعلّم يُبقي قائمة الأسماء والأنصبة محدّثة لكل الطلاب
+        if (isSchoolFam() && isOwner()) pushPublic(ch.doc.id).catch(() => {});
       });
       if (changed) emit();
     }, () => {});
+    if (unsubRoster){ unsubRoster(); unsubRoster = null; }
+    if (unsubShares){ unsubShares(); unsubShares = null; }
+    if (isSchoolFam()){
+      unsubRoster = db.collection(`families/${fid}/roster`).onSnapshot(snap => {
+        snap.docChanges().forEach(ch => {
+          if (ch.type === 'removed'){ const p = Store.profile(ch.doc.id); if (p && p.roster) Store.removeProfile(ch.doc.id); return; }
+          Store.applyRoster(ch.doc.id, ch.doc.data());
+        });
+        emit();
+      }, () => {});
+      unsubShares = db.collection(`families/${fid}/shares`).onSnapshot(snap => {
+        st.shares = {}; snap.forEach(d => { st.shares[d.id] = d.data(); }); emit();
+      }, () => {});
+    }
     // طلبات «سمّعني» في آخر أسبوعين
     if (unsubReq) unsubReq();
     unsubReq = db.collection(`families/${fid}/requests`).where('created', '>=', Date.now() - 14 * 864e5).onSnapshot(snap => {
@@ -141,7 +161,9 @@ const Cloud = (() => {
     if (unsubMembers){ unsubMembers(); unsubMembers = null; }
     if (unsubReq){ unsubReq(); unsubReq = null; }
     if (unsubFam){ unsubFam(); unsubFam = null; }
-    st.fid = null; st.family = null; st.requests = [];
+    if (unsubRoster){ unsubRoster(); unsubRoster = null; }
+    if (unsubShares){ unsubShares(); unsubShares = null; }
+    st.fid = null; st.family = null; st.requests = []; st.shares = {};
   }
 
   const encodeMem = r => r.map(([a, b]) => a === b ? `${a}` : `${a}-${b}`).join(',');
@@ -152,11 +174,21 @@ const Cloud = (() => {
   async function uploadLocal(){
     const local = Store.profiles().filter(p => !p.cloud);
     if (!local.length) return;
-    const existing = await db.collection(`families/${st.fid}/members`).get();
     const byName = {};
-    existing.forEach(d => { const u = d.data().uids; if (Array.isArray(u) && u.length === 0) byName[d.data().name.trim()] = d; });
+    if (schoolStudent()){
+      // الطالب لا يقرأ ملفّات غيره: المطابقة من قائمة الأسماء، ثم يُربط الملفّ قبل قراءته
+      const ros = await db.collection(`families/${st.fid}/roster`).where('free', '==', true).get();
+      for (const d of ros.docs){ if (byName[d.data().name.trim()]) continue; byName[d.data().name.trim()] = {lazy: d.id}; }
+    } else {
+      const existing = await db.collection(`families/${st.fid}/members`).get();
+      existing.forEach(d => { const u = d.data().uids; if (Array.isArray(u) && u.length === 0) byName[d.data().name.trim()] = d; });
+    }
     for (const p of local){
-      const match = byName[p.name.trim()];
+      let match = byName[p.name.trim()];
+      if (match && match.lazy){
+        const r = db.doc(`families/${st.fid}/members/${match.lazy}`);
+        try { await r.update({uids: [user.uid]}); match = await r.get(); } catch(e){ match = null; }
+      }
       const ref = match ? match.ref : db.collection(`families/${st.fid}/members`).doc();
       const d = Store.data(p.id);
       if (match){   // دمج: اتحاد المحفوظ، وأحدث تسميع لكل آية
@@ -207,6 +239,21 @@ const Cloud = (() => {
             goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}, wkp: weekHist(p, d), hifz: d.hifz || null, mapLock: d.mapLock || null, certs: d.certs || {}};
   }
 
+  /* ---------- الحلقة المدرسية: قائمة الأسماء والأنصبة ---------- */
+  const pubCache = {};
+  async function pushPublic(id){
+    if (!isSchoolFam() || !st.fid) return;
+    const p = Store.profile(id); if (!p || p.roster) return;
+    const uids = p.uids || [];
+    const r = {name: p.name, color: p.color, free: !uids.length, owner: uids.includes(st.family.owner)};
+    const c = Stats.contribution(id, mine(p) || !uids.length), w = Stats.weekStart(Store.today());
+    const s = {w, pct: Math.round(c.pct), base: Math.round(c.base), bonus: c.bonus, has: c.hasGoal};
+    const key = JSON.stringify([r, s]); if (pubCache[id] === key) return;
+    pubCache[id] = key;
+    await db.doc(`families/${st.fid}/roster/${id}`).set(r);
+    await db.doc(`families/${st.fid}/shares/${id}`).set(s);
+  }
+
   /* ---------- رفع التعديلات ---------- */
   const timers = {};
   function schedulePush(id){
@@ -219,6 +266,7 @@ const Cloud = (() => {
     if (!p.cloud){ await uploadLocal(); return; }
     if (!canEdit(p)) return;
     await db.doc(`families/${st.fid}/members/${id}`).set(memberDoc(id));
+    pushPublic(id).catch(() => {});
     await pushPub(id);
   }
   // الأرقام العامة للوحة القيادة: المحفوظ يُحسب كاملًا، والتسميع يزيد تراكميًّا
@@ -330,10 +378,11 @@ const Cloud = (() => {
     const sessions = [];
     for (const m of members) (await m.ref.collection('sessions').get()).docs.forEach(s => sessions.push(s.ref));
     const requests = (await base.collection('requests').get()).docs.map(d => d.ref);
+    const extra = [...(await base.collection('roster').get()).docs, ...(await base.collection('shares').get()).docs].map(d => d.ref);
     const access = (await base.collection('access').get()).docs;
     progress('حذف الجلسات'); await delAll(sessions);
     progress('حذف الأفراد'); await delAll(members.map(m => m.ref));
-    await delAll(requests);
+    await delAll(requests); await delAll(extra);
     await delAll(members.map(m => db.doc(`pub/${m.id}`)));
     if (jc) await db.doc(`joinCodes/${jc}`).delete().catch(() => {});
     await db.doc(`fstat/${fid}`).delete().catch(() => {});
@@ -389,6 +438,7 @@ const Cloud = (() => {
       await loadSessions(bm.id, true);
       Store.mergeSessions(bm.id, ss);
       await pushPub(bm.id, Store.data(bm.id).sess);
+      await pushPublic(bm.id).catch(() => {});
     }
     emit();
     return {members: bk.members.length, sessions: bk.members.reduce((t, x) => t + (((x.data || {}).sess) || []).length, 0)};
@@ -402,7 +452,8 @@ const Cloud = (() => {
   // «هذا أنا»: ربط فرد غير مربوط بهذا الجهاز
   async function claimMember(id){
     await db.doc(`families/${st.fid}/members/${id}`).update({uids: [user.uid]});
-    const p = Store.profile(id); p.uids = [user.uid]; Store.save(); emit();
+    if (isSchoolFam()) await db.doc(`families/${st.fid}/roster/${id}`).update({free: false}).catch(() => {});
+    const p = Store.profile(id); p.uids = [user.uid]; p.roster = false; Store.save(); emit();
   }
   // وليّ الأمر: يسمح بربط الفرد بجهاز جديد (مثلًا بعد تغيير الجوال)
   async function releaseMember(id){
@@ -413,6 +464,8 @@ const Cloud = (() => {
   async function removeMember(id){
     await db.doc(`families/${st.fid}/members/${id}`).delete();
     await db.doc(`pub/${id}`).delete().catch(() => {});
+    await db.doc(`families/${st.fid}/roster/${id}`).delete().catch(() => {});
+    await db.doc(`families/${st.fid}/shares/${id}`).delete().catch(() => {});
   }
 
   /* ---------- إنشاء حلقة عائلة (بدعوة، أو مباشرةً للمدير) ---------- */

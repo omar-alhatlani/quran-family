@@ -13,6 +13,12 @@ service cloud.firestore {
     function ownsMember(fid, mid) {
       return request.auth.uid in get(/databases/$(database)/documents/families/$(fid)/members/$(mid)).data.get('uids', []);
     }
+    // الحلقة المدرسية: الطالب لا يقرأ إلا ملفّه، والمعلّم يقرأ الجميع
+    function isSchool(fid) { return get(fam(fid)).data.get('type', 'family') == 'school'; }
+    function canReadMember(fid, mid) {
+      return inFamily(fid) && (!isSchool(fid) || isOwner(fid)
+        || request.auth.uid in get(/databases/$(database)/documents/families/$(fid)/members/$(mid)).data.get('uids', []));
+    }
     function hasFamily() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
 
     // دعوات إنشاء العائلات: ينشئها المدير، ويستعملها ولي الأمر مرة واحدة
@@ -44,8 +50,18 @@ service cloud.firestore {
         allow delete: if isOwner(fid) || (signedIn() && uid == request.auth.uid);
       }
       // كل أفراد العائلة يرون الجميع، ولا يعدّل الفردَ إلا جهازه أو وليّ الأمر، ولا يحذفه إلا وليّ الأمر
-      match /members/{mid} {
+      // قائمة الأسماء فقط (اسم ولون، وهل الملفّ غير مربوط): لـ«من أنت؟» و«اطلب تسميعًا»
+      match /roster/{mid} {
         allow read: if inFamily(fid);
+        allow write: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, mid));
+      }
+      // نصيب كل فرد في الخزّان: أرقام بلا أسماء، ليُحسب المجموع دون الاطّلاع على ملفّات الآخرين
+      match /shares/{mid} {
+        allow read: if inFamily(fid);
+        allow write: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, mid));
+      }
+      match /members/{mid} {
+        allow read: if inFamily(fid) && (!isSchool(fid) || isOwner(fid) || request.auth.uid in resource.data.get('uids', []));
         allow create: if inFamily(fid) && (isOwner(fid) || request.resource.data.uids == [request.auth.uid]);
         allow update: if inFamily(fid) && (
           isOwner(fid)
@@ -53,7 +69,7 @@ service cloud.firestore {
           || (resource.data.get('uids', null) == [] && request.resource.data.uids == [request.auth.uid]));
         allow delete: if isOwner(fid);
         match /sessions/{sid} {
-          allow read: if inFamily(fid);
+          allow read: if canReadMember(fid, mid);
           allow create, update: if inFamily(fid) && (isOwner(fid) || ownsMember(fid, mid));
           allow delete: if isOwner(fid);
         }
