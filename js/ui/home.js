@@ -17,6 +17,7 @@ function viewHome(pid){
     ${own ? majlisCard() : ''}
     ${m.words ? certCard(pid, Cloud.canEdit(p)) : ''}
     ${hwCard(pid)}
+    ${devotionCards(pid)}
     ${!m.words ? (edit ? `
       <section class="panel today">
         <h2>لنبدأ</h2>
@@ -35,6 +36,7 @@ function viewHome(pid){
       ${Cloud.canRecite(p) ? `<a class="act" href="#/mut">${ICON_TWIN}المتشابهات</a>` : ''}
       <a class="act" href="#/map">${ICON.map}خريطة الحفظ</a>
       <a class="act" href="#/report">${ICON.chart}التقرير</a>
+      ${ownsPrivate(p) ? '<a class="act" href="#/adhkar"><span class="act-e" aria-hidden="true">📿</span>الأذكار</a>' : ''}
     </nav>
     ${recent.length ? `<section class="panel"><h3>آخر التسميعات</h3><ul class="list">${recent.map(s => `
       <li><span>${Q.rangeLabel(s.a, s.b)} <span class="small">· ${s.kind === 'review' ? 'مراجعة' : 'حفظ جديد'}${s.byName ? ' · بتسميع ' + esc(s.byName) : ''} · ${ago(s.t)} ${new Date(s.t).toLocaleTimeString('ar-SA', {hour: 'numeric', minute: '2-digit'})}</span></span><b>${AR(s.pct)}٪</b>${s.note ? `<span class="snote">«${esc(s.note)}»</span>` : ''}</li>`).join('')}</ul></section>` : ''}

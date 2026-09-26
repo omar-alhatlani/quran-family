@@ -132,15 +132,41 @@
     let text = null; const orig = URL.createObjectURL;
     URL.createObjectURL = b => { b.text().then(x => { text = x; }); return 'blob:x'; };
     const click = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function(){};
-    try { reminderICS(20, 30); await wait(100); } finally { URL.createObjectURL = orig; HTMLAnchorElement.prototype.click = click; }
-    ['BEGIN:VCALENDAR', 'RRULE:FREQ=DAILY', 'T203000', 'BEGIN:VALARM', 'ورد القرآن'].forEach(s => ok(text && text.includes(s), 'ينقص: ' + s));
+    try { reminderICS([{k: 'wird', t: '20:30'}, {k: 'adhm', t: '06:00'}, {k: 'kahf', t: '09:15'}]); await wait(100); } finally { URL.createObjectURL = orig; HTMLAnchorElement.prototype.click = click; }
+    ['BEGIN:VCALENDAR', 'RRULE:FREQ=DAILY', 'T203000', 'BEGIN:VALARM', 'ورد القرآن', 'أذكار الصباح', 'T060000', 'RRULE:FREQ=WEEKLY;BYDAY=FR', 'T091500', '#/kahf'].forEach(s => ok(text && text.includes(s), 'ينقص: ' + s));
+    eq(text.split('BEGIN:VEVENT').length - 1, 3, 'ثلاثة أحداث');
+    ok(text.endsWith('\r\n') && text.slice(0, -2).split('\r\n').every(l => /^[A-Z]+[:;]/.test(l)), 'كل سطر حقل تقويم سليم');
   });
 
+  /* ---------- الأذكار والكهف ---------- */
+  await test('الأذكار: الصباح والمساء من حصن المسلم بصيغتيهما', async () => {
+    const A = await loadAdhkar();
+    eq([A.m.length, A.e.length], [22, 20]);
+    const t = (k, id) => A[k].find(x => x.id === id);
+    ok(t('m', 77).t.startsWith('أَصْبَحْنَا') && t('e', 77).t.startsWith('أَمْسَيْنَا'), 'أصبحنا/أمسينا');
+    const bare = x => x.replace(/[ً-ْ]/g, ''); ok(bare(t('e', 78).t).includes('إليك المصير') && bare(t('m', 78).t).includes('إليك النشور'), 'النشور/المصير');
+    ok(t('e', 97) && !t('m', 97), 'كلمات الله التامات للمساء'); eq(t('m', 83).n, 7, 'حسبي الله سبعًا'); eq(t('m', 76).n, 3);
+    ok(!A.e.some(x => x.t && /هَذَا الْيَوْمِ/.test(x.t)), 'لا «هذا اليوم» في المساء');
+  });
+  await test('الأوقات: الأذكار والكهف (مغرب الخميس إلى مغرب الجمعة)', () => {
+    const at = (y, mo, d, h) => new Date(y, mo - 1, d, h, 0);
+    eq([adhNow(at(2026, 9, 26, 5)), adhNow(at(2026, 9, 26, 13)), adhNow(at(2026, 9, 26, 20)), adhNow(at(2026, 9, 26, 2))], ['m', null, 'e', null]);
+    const fri = Store.dayOf(at(2026, 10, 2, 12).getTime());
+    eq([kahfDay(at(2026, 10, 1, 17)), kahfDay(at(2026, 10, 1, 19)), kahfDay(at(2026, 10, 2, 10)), kahfDay(at(2026, 10, 2, 19))], [null, fri, fri, null]);
+  });
+  await test('الأذكار: العدّ والإتمام خاصّان بالجهاز', async () => {
+    const p = kid(); location.hash = '#/adhkar/1'; await wait(400);
+    ok($('#adhC'), 'زر العدّ'); $('#adhNext').click(); ok($('.adh-top').textContent.includes('٢ من'), 'التالي');
+    const s = privGet('adh', p.id); eq(s.pos.i, 1, 'الموضع محفوظ');
+    for (let k = 0; k < 40 && $('#adhNext'); k++) $('#adhNext').click();
+    ok(adhDone(p.id, 'm'), 'أُتمّت'); ok(!Store.data(p.id).adh, 'لا شيء في ملفّ الفرد المتزامن');
+    location.hash = '#/';
+  });
   /* ---------- الشاشات: كلّها تُعرض بلا أخطاء ---------- */
   await test('الشاشات تُعرض', async () => {
     const p = kid(); Store.setMem(p.id, Q.juzFirst[30], Q.juzLast[30], true);
     Store.data(p.id).goal = {n: 2, nu: 'page', dy: 5, rc: 4, since: Store.today()};
-    const routes = ['#/', '#/home', '#/map', '#/tasmee/67/1/5', '#/report', '#/goal', '#/start/2', '#/drill', '#/mut', '#/play/67/1/5', '#/play/wird', '#/cert/30', '#/start/3'];
+    const routes = ['#/', '#/home', '#/map', '#/tasmee/67/1/5', '#/report', '#/goal', '#/start/2', '#/drill', '#/mut', '#/play/67/1/5', '#/play/wird', '#/cert/30', '#/start/3', '#/adhkar', '#/adhkar/2', '#/kahf', '#/play/kahf'];
     for (const h of routes){
       location.hash = h; await wait(350);
       ok(document.querySelector('#app').innerText.trim().length > 20, 'شاشة فارغة: ' + h);

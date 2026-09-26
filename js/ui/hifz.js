@@ -43,8 +43,8 @@ function viewPlayWird(pid){
 /* مشغّل التلاوة: مقاطع متتالية، كل آية تُكرَّر عددًا يُختار (للحفظ ٣ افتراضًا، وللمراجعة مرة)، والآية الحالية مظلَّلة */
 function viewPlayList(pid, ranges, title, kind){
   setTop(title, '#/home');
-  const repKey = kind === 'rev' ? 'repeatRev' : 'repeat';
-  let rec = Store.pref('reciter', RECITERS[0][0]), rep = Store.pref(repKey, kind === 'rev' ? 1 : 3);
+  const repKey = kind === 'hifz' ? 'repeat' : 'repeatRev';
+  let rec = Store.pref('reciter', RECITERS[0][0]), rep = Store.pref(repKey, kind === 'hifz' ? 3 : 1);
   const withBas = A => Q.num[A] === 1 && Q.sur[A] !== 1 && Q.sur[A] !== 9;
   const canR = Cloud.canRecite(Store.profile(pid));
   const recHref = kind === 'rev' ? (() => { const w = Stats.wird(pid, false), ws = w && Stats.wirdStatus(pid, w); return ws && ws.next ? tasmeeHref(ws.next.a, ws.next.b) : ''; })()
@@ -65,7 +65,7 @@ function viewPlayList(pid, ranges, title, kind){
     <div class="bar"><div class="wrap">
       <button class="mic" id="pl" type="button" aria-label="تشغيل">${ICON_PLAY}</button>
       <div class="prog"><div class="t" id="pt">اضغط للاستماع</div><div class="track"><i id="pi"></i></div></div>
-      ${canR && recHref ? `<a class="btn" href="${recHref}">${kind === 'rev' ? 'سمّع الورد' : 'سمّع حفظك'}</a>` : ''}
+      ${canR && recHref && kind !== 'kahf' ? `<a class="btn" href="${recHref}">${kind === 'rev' ? 'سمّع الورد' : 'سمّع حفظك'}</a>` : ''}
     </div></div>`;
   document.body.classList.add('has-bar');
   const audio = new Audio(); audio.preload = 'auto';
@@ -87,7 +87,7 @@ function viewPlayList(pid, ranges, title, kind){
     $('#pl').classList.toggle('on', playing);
   };
   const playAt = p => {
-    pos = p; if (pos >= list.length){ playing = false; pos = 0; mark(); $('#pt').textContent = kind === 'rev' ? 'انتهى الورد. سمّعه الآن وهو حاضر في ذهنك.' : 'انتهى. أعد الاستماع أو سمّع حفظك.'; return; }
+    pos = p; if (pos >= list.length){ playing = false; pos = 0; mark(); $('#pt').textContent = kind === 'kahf' ? 'انتهت سورة الكهف. تقبّل الله منك.' : kind === 'rev' ? 'انتهى الورد. سمّعه الآن وهو حاضر في ذهنك.' : 'انتهى. أعد الاستماع أو سمّع حفظك.'; return; }
     audio.src = list[pos].url; audio.play().then(() => { playing = true; mark(); }).catch(() => { playing = false; mark(); $('#pt').textContent = 'تعذّر التشغيل. تأكّد من الاتصال.'; });
   };
   audio.onended = () => playAt(pos + 1);

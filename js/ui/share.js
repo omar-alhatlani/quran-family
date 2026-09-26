@@ -221,29 +221,47 @@ async function showReport(makeImg, text, name){
   });
 }
 
-/* التذكير اليومي: ملف تقويم (ics) بحدث يتكرّر كل يوم في الساعة المختارة، مع تنبيه */
-function reminderICS(hh, mm){
-  const pad = n => String(n).padStart(2, '0'), t = new Date(Date.now() + 864e5);
-  const day = `${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}`;
-  const url = location.origin + location.pathname;
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Halaqa Albait//AR', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-    `UID:halaqa-${Date.now()}@halaqa-albait`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-    `DTSTART:${day}T${pad(hh)}${pad(mm)}00`, 'DURATION:PT20M', 'RRULE:FREQ=DAILY',
-    'SUMMARY:ورد القرآن · حلقة البيت', `DESCRIPTION:حفظ اليوم وورد المراجعة\\n${url}`, `URL:${url}`,
-    'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', 'DESCRIPTION:وقت ورد القرآن', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'];
+/* التذكيرات: ملف تقويم (ics) فيه حدث لكل تذكير مختار، يتكرّر (يوميًّا، أو كل جمعة للكهف) بتنبيه */
+const REMS = [
+  {k: 'wird', name: 'ورد القرآن', t: '20:00', desc: 'حفظ اليوم وورد المراجعة'},
+  {k: 'adhm', name: 'أذكار الصباح', t: '06:00', desc: 'أذكار الصباح من حصن المسلم', path: '#/adhkar/1'},
+  {k: 'adhe', name: 'أذكار المساء', t: '16:30', desc: 'أذكار المساء من حصن المسلم', path: '#/adhkar/2'},
+  {k: 'kahf', name: 'سورة الكهف', t: '09:00', desc: 'قراءة سورة الكهف يوم الجمعة', path: '#/kahf', weekly: true}
+];
+const remPrefs = () => ({wird: {on: true, t: Store.pref('remTime', '20:00')}, ...Store.pref('rems', {})});
+function reminderICS(items){
+  const pad = n => String(n).padStart(2, '0'), url = location.origin + location.pathname;
+  const ymd = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Halaqa Albait//AR', 'CALSCALE:GREGORIAN'];
+  items.forEach(({k, t}, n) => {
+    const r = REMS.find(x => x.k === k), [hh, mm] = t.split(':').map(Number);
+    // البداية: الغد، وللكهف أول جمعة قادمة
+    const d = new Date(Date.now() + 864e5); if (r.weekly) while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
+    lines.push('BEGIN:VEVENT', `UID:halaqa-${k}-${Date.now()}-${n}@halaqa-albait`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+      `DTSTART:${ymd(d)}T${pad(hh)}${pad(mm)}00`, 'DURATION:PT15M', r.weekly ? 'RRULE:FREQ=WEEKLY;BYDAY=FR' : 'RRULE:FREQ=DAILY',
+      `SUMMARY:${r.name} · حلقة البيت`, `DESCRIPTION:${r.desc}\\n${url}${r.path || ''}`, `URL:${url}${r.path || ''}`,
+      'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:وقت ${r.name}`, 'END:VALARM', 'END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
   const blob = new Blob([lines.join('\r\n') + '\r\n'], {type: 'text/calendar;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'تذكير-حلقة-البيت.ics'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+// صندوق اختيار التذكيرات (في الرئيسية وفي آخر خطوة من البداية)
+function remBox(){
+  const P = remPrefs();
+  return `<div class="rem-list">${REMS.map(r => { const v = P[r.k] || {}; return `<label class="rem-i">
+      <input type="checkbox" data-rem="${r.k}" ${v.on ? 'checked' : ''}><span>${r.name}${r.weekly ? ' <span class="small">(كل جمعة)</span>' : ''}</span>
+      <input type="time" data-remt="${r.k}" value="${v.t || r.t}" aria-label="ساعة ${r.name}"></label>`; }).join('')}</div>
+    <button class="btn small primary" type="button" id="remAdd">أضف المختار إلى تقويم جوالك</button>
+    <p class="small" style="margin:6px 0 0">يُنزَّل ملف تقويم؛ افتحه فيضيف الجوال التذكيرات بتنبيه.</p>`;
 }
 // سطر الأزرار في الرئيسية
 function shareRow(pid){
   const p = Store.profile(pid), own = Cloud.mine(p);
   return `<div class="share-row">
     <button class="btn small" type="button" id="shareWeek">📤 تقرير الأسبوع</button>
-    ${own ? `<details class="rem"><summary class="btn small">⏰ تذكير يومي</summary>
-      <div class="row" style="margin-top:8px"><label for="remT">الساعة</label><input type="time" id="remT" value="${Store.pref('remTime', '20:00')}">
-      <button class="btn small primary" type="button" id="remAdd">أضفه إلى التقويم</button></div>
-      <p class="small" style="margin:6px 0 0">يُنزَّل حدث يتكرّر كل يوم بتنبيه؛ افتحه فيضيفه الجوال إلى تقويمه.</p></details>` : ''}
+    ${own ? `<details class="rem"><summary class="btn small">⏰ التذكيرات</summary>${remBox()}</details>` : ''}
   </div>`;
 }
 function bindShare(pid){
@@ -252,8 +270,11 @@ function bindShare(pid){
     showReport(() => memberReportImage(pid), memberReportText(pid), 'تقرير-' + Store.profile(pid).name.replace(/\s+/g, '-'));
   };
   if ($('#remAdd')) $('#remAdd').onclick = () => {
-    const [hh, mm] = ($('#remT').value || '20:00').split(':').map(Number); Store.setPref('remTime', $('#remT').value || '20:00');
-    reminderICS(hh, mm);
+    const P = {}; $$('[data-rem]').forEach(c => { P[c.dataset.rem] = {on: c.checked, t: $(`[data-remt="${c.dataset.rem}"]`).value || REMS.find(r => r.k === c.dataset.rem).t}; });
+    Store.setPref('rems', P); if (P.wird) Store.setPref('remTime', P.wird.t);
+    const items = Object.entries(P).filter(([, v]) => v.on).map(([k, v]) => ({k, t: v.t}));
+    if (!items.length) return alert('اختر تذكيرًا واحدًا على الأقل.');
+    reminderICS(items);
   };
   if ($('#shareCircle')) $('#shareCircle').onclick = async () => {
     const b = $('#shareCircle'); b.disabled = true;

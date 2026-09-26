@@ -43,8 +43,9 @@ function route(keepScroll){
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
   if (parts[0] === 'play' && parts[1] === 'wird' && pid) return viewPlayWird(pid);
+  if (parts[0] === 'play' && parts[1] === 'kahf' && pid) return viewPlayList(pid, [[Q.idx(18, 1), Q.idx(18, 110)]], 'استمع: سورة الكهف', 'kahf');
   if (!parts.length || !pid) return viewProfiles();
-  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert, drill: viewDrill}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
+  ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert, drill: viewDrill, adhkar: viewAdhkar, kahf: viewKahf}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
 }
 window.addEventListener('hashchange', () => route());
