@@ -87,16 +87,17 @@ function viewProfiles(){
     </section>
     ${taken.length ? `<section class="panel">
       <h3>ملفّك موجود لكنه على جهاز آخر؟</h3>
-      <p class="small" style="margin:4px 0 8px">يحدث هذا بعد تغيير الجوال أو مسح بيانات المتصفّح. اضغط اسمك فيصل طلبك إلى وليّ الأمر، وحين يوافق يعود ملفّك كاملًا إلى هذا الجهاز.</p>
-      ${myRelink ? `<p class="metmsg" style="color:var(--hint)">⏳ أُرسل طلبك لربط ملفّ ${esc(pname(myRelink.from))}. انتظر موافقة وليّ الأمر.</p>`
+      <p class="small" style="margin:4px 0 8px">يحدث هذا بعد تغيير الجوال أو مسح بيانات المتصفّح. اضغط اسمك فيصل طلبك إلى ${T('guardian')}، وحين يوافق يعود ملفّك كاملًا إلى هذا الجهاز.</p>
+      ${myRelink ? `<p class="metmsg" style="color:var(--hint)">⏳ أُرسل طلبك لربط ملفّ ${esc(pname(myRelink.from))}. انتظر موافقة ${T('guardian')}.</p>`
         : `<div class="row">${taken.map(p => `<button class="btn relink" type="button" data-id="${p.id}">أنا ${esc(p.name)}</button>`).join('')}</div>`}
     </section>` : ''}`}
     ${majlisCard()}
+    ${overviewTable()}
     ${tankCard()}
     ${peerBanner()}
-    ${others.length ? `<h3 style="margin-top:18px">أفراد الحلقة <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
+    ${others.length && seesOthers() ? `<h3 style="margin-top:18px">${T('members')} <span class="small">(للاطّلاع)</span></h3><div class="profiles">${others.map(card).join('')}</div>` : ''}
     ${familyPanel()}
-    ${isOwner() ? `<details class="panel"><summary>إضافة فرد ليس معه جوال</summary>
+    ${isOwner() ? `<details class="panel"><summary>${T('addNoPhone')}</summary>
       <p class="small">تديره أنت من جوالك، ويمكنه لاحقًا أن يختاره من جواله بعبارة «أنا …».</p>${addForm('otherForm', 'الاسم', 'إضافة')}</details>` : ''}`;
   } else {
     body = `
@@ -146,7 +147,7 @@ ${inFam && !isOwner() ? '' : `
     Store.cur = p.id; location.hash = '#/home';
   }; };
   bindAdd('addForm', false); bindAdd('meForm', false); bindAdd('otherForm', true);
-  bindPeerBanner(); bindTank();
+  bindPeerBanner(); bindTank(); bindOverview(); bindCircles();
   bindFamilyPanel();
   const download = (txt, name) => {
     const blob = new Blob([txt], {type: 'application/json'});
@@ -199,6 +200,81 @@ ${inFam && !isOwner() ? '' : `
   };
 }
 
+/* ================= نوع الحلقة: عائلة أو مدرسية ================= */
+const isSchool = () => !!(Cloud.st.family && Cloud.st.family.type === 'school');
+const TERMS = {
+  family: {guardian: 'وليّ الأمر', members: 'أفراد الحلقة', member: 'فرد', yourPeople: 'أهلك', hisPeople: 'أهله', code: 'رمز العائلة',
+           majlis: 'مجلس الجمعة', majlisWhere: 'اعرضه على التلفزيون مع العائلة', addNoPhone: 'إضافة فرد ليس معه جوال'},
+  school: {guardian: 'المعلّم', members: 'طلاب الحلقة', member: 'طالب', yourPeople: 'طلابك', hisPeople: 'زملائه', code: 'رمز الحلقة',
+           majlis: 'مجلس الأسبوع', majlisWhere: 'اعرضه على شاشة الفصل', addNoPhone: 'إضافة طالب ليس معه جوال'}
+};
+const T = k => TERMS[isSchool() ? 'school' : 'family'][k];
+// الطالب لا يطّلع على ملفّات زملائه ولا نسبهم؛ المعلّم يرى الجميع
+const seesOthers = () => !isSchool() || isOwner();
+
+/* متابعة الحلقة (للمعلّم ووليّ الأمر): كل فرد بنظرة واحدة */
+function overviewTable(){
+  if (!isOwner()) return '';
+  const ps = Store.profiles().filter(p => p.cloud), t = Store.today();
+  if (ps.length < 2) return '';
+  const rows = ps.map(p => {
+    const d = Store.data(p.id), m = Stats.memorized(p.id);
+    const c = Stats.contribution(p.id, Cloud.canRecite(p));
+    let wird = '—';
+    if (d.wird && d.wird.d === t){ const ws = Stats.wirdStatus(p.id, d.wird); wird = ws.complete ? '<b class="ok">✓</b>' : ws.done > 0 ? '<span class="part">جزئي</span>' : '<span class="no">لم يبدأ</span>'; }
+    let hifz = '—';
+    if (d.hifz && d.hifz.d === t){ const hs = Stats.hifzStatus(p.id, d.hifz); hifz = hs.complete ? '<b class="ok">✓</b>' : '<span class="no">لم يتمّ</span>'; }
+    else if (!d.goal || !d.goal.n) hifz = '<span class="muted">بلا هدف</span>';
+    const last = Math.max(-1, ...Object.values(d.rev || {}).map(r => r[0]));
+    const lastTxt = last < 0 ? '—' : t - last <= 0 ? 'اليوم' : t - last === 1 ? 'أمس' : `قبل ${AR(t - last)} ${t - last <= 10 ? 'أيام' : 'يومًا'}`;
+    return `<tr data-id="${p.id}"><td>${avatar(p, 'sm')} ${esc(p.name)}</td><td>${Q.dec(m.pages)}</td><td>${c.hasGoal ? AR(Math.round(c.base)) + '٪' : '—'}</td><td>${wird}</td><td>${hifz}</td><td>${lastTxt}</td></tr>`;
+  }).join('');
+  return `<section class="panel ov">
+    <h2>متابعة الحلقة</h2>
+    <div class="ov-wrap"><table>
+      <thead><tr><th>${isSchool() ? 'الطالب' : 'الفرد'}</th><th>المحفوظ (وجه)</th><th>هدف الأسبوع</th><th>ورد اليوم</th><th>حفظ اليوم</th><th>آخر تسميع</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="small" style="margin:6px 0 0">اضغط الاسم لفتح ملفّه.</p>
+  </section>`;
+}
+function bindOverview(){ $$('.ov tr[data-id]').forEach(r => r.onclick = () => { Store.cur = r.dataset.id; location.hash = '#/home'; }); }
+
+/* حلقاتي: التبديل بين حلقات الحساب، وإنشاء حلقة أخرى */
+function circlesPanel(){
+  const st = Cloud.st, cs = st.circles || [];
+  const g = st.user && !st.user.anon;
+  if (cs.length < 2 && !g) return '';
+  return `<details class="circles"${cs.length > 1 ? ' open' : ''}><summary class="small">حلقاتي${cs.length > 1 ? ` (${AR(cs.length)})` : ''}</summary>
+    ${cs.length > 1 ? `<div class="row" style="margin-top:8px">${cs.map(c => `<button class="btn small ${c.id === st.fid ? 'primary' : ''}" type="button" data-circle="${c.id}">${c.type === 'school' ? '🏫' : '🏠'} ${esc(c.name)}</button>`).join('')}</div>` : ''}
+    ${g ? `<form id="newCircle" style="margin-top:10px">
+      <label for="ncName">أنشئ حلقة أخرى</label>
+      <input type="text" id="ncName" maxlength="30" required placeholder="مثل: حلقة الصف الثاني المتوسط">
+      <div class="row" style="margin-top:8px">
+        <label class="chk"><input type="radio" name="ncType" value="family" checked> حلقة عائلة</label>
+        <label class="chk"><input type="radio" name="ncType" value="school"> حلقة مدرسية (معلّم وطلاب)</label>
+      </div>
+      ${st.user.admin ? '' : '<input type="text" id="ncInv" class="codein" maxlength="10" required placeholder="رمز الدعوة" dir="ltr" style="margin-top:8px">'}
+      <div style="margin-top:8px"><button class="btn small primary" type="submit">أنشئ</button></div>
+    </form>` : ''}
+  </details>`;
+}
+function bindCircles(){
+  $$('[data-circle]').forEach(b => b.onclick = async () => {
+    if (b.dataset.circle === Cloud.st.fid) return;
+    b.disabled = true;
+    try { await Cloud.switchCircle(b.dataset.circle); location.hash = '#/'; route(); }
+    catch(e){ b.disabled = false; alert('تعذّر التبديل. تأكّد من الاتصال.'); }
+  });
+  const f = $('#newCircle'); if (!f) return;
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+    try {
+      await Cloud.createFamily($('#ncName').value.trim(), $('#ncInv') ? $('#ncInv').value.trim().toUpperCase() : '', f.querySelector('input[name=ncType]:checked').value);
+      location.hash = '#/'; route();
+    } catch(x){ btn.disabled = false; alert(errText(x)); }
+  };
+}
+
 /* ================= حلقة العائلة (السحابة) ================= */
 const ERR = {
   'invite-missing': 'رمز الدعوة غير صحيح. تأكّد منه ثم أعد المحاولة.',
@@ -219,11 +295,12 @@ function familyPanel(){
   const admin = st.user && st.user.admin ? '<p style="margin:10px 0 0"><a class="btn small" href="admin.html">لوحة القيادة</a></p>' : '';
   if (st.fid && st.family) return `
     <section class="panel today">
-      <div class="row between"><h2>حلقة ${esc(st.family.name)}</h2>${isOwner() ? '<span class="chip">وليّ الأمر</span>' : ''}</div>
-      <p class="small" style="margin:4px 0 8px">أرسل رمز العائلة لأهلك ليدخلوا من جوالاتهم، ويرى كل واحد تقدّم الحلقة.</p>
+      <div class="row between"><h2>حلقة ${esc(st.family.name)}</h2>${isOwner() ? `<span class="chip">${T('guardian')}</span>` : ''}</div>
+      <p class="small" style="margin:4px 0 8px">أرسل ${T('code')} لـ${T('yourPeople')} ليدخلوا من جوالاتهم${isSchool() ? '' : '، ويرى كل واحد تقدّم الحلقة'}.</p>
       <div class="row"><b class="jcode" dir="ltr">${st.family.joinCode}</b>
         <button class="btn small primary" id="copyJoin" type="button">نسخ رابط الانضمام</button></div>
-      <p style="margin:12px 0 0"><a class="btn" href="#/majlis">📺 مجلس الجمعة</a> <span class="small">اعرضه على التلفزيون مع العائلة</span></p>
+      <p style="margin:12px 0 0"><a class="btn" href="#/majlis">📺 ${T('majlis')}</a> <span class="small">${T('majlisWhere')}</span></p>
+      ${circlesPanel()}
       ${st.user.anon ? `<div class="protect"><b>🛡️ احمِ ملفّك</b>
         <p class="small" style="margin:2px 0 8px">اربطه بحساب Google، فيعود إليك على أي جوال بالدخول بـ Google، ولا يضيع إن مُسحت بيانات المتصفّح.</p>
         <button class="btn small primary" id="linkG" type="button">اربط بحساب Google</button></div>` : ''}
@@ -248,7 +325,11 @@ function familyPanel(){
       <details style="margin-top:12px" ${g ? 'open' : ''}><summary class="small" style="font-weight:600">وليّ أمر معه دعوة؟ أنشئ حلقة لعائلتك</summary>
         ${g ? `<form id="createForm" style="margin-top:10px">
             <p class="small" style="margin:0 0 8px">دخلت باسم ${esc(st.user.email || '')} · <button class="btn small" id="signOut" type="button">خروج</button></p>
-            <label for="fname">اسم العائلة</label><input type="text" id="fname" maxlength="30" required placeholder="مثل: آل فلان">
+            <label for="fname">اسم الحلقة</label><input type="text" id="fname" maxlength="30" required placeholder="مثل: آل فلان، أو حلقة الصف الثاني">
+            <div class="row" style="margin-top:8px">
+              <label class="chk"><input type="radio" name="fType" value="family" checked> حلقة عائلة</label>
+              <label class="chk"><input type="radio" name="fType" value="school"> حلقة مدرسية</label>
+            </div>
             ${st.user.admin ? '<p class="small">أنت المدير: لا تحتاج رمز دعوة.</p>' : '<label for="inv" style="display:block;margin-top:8px">رمز الدعوة</label><input type="text" id="inv" class="codein" maxlength="10" required dir="ltr">'}
             <div style="margin-top:10px"><button class="btn primary" type="submit">أنشئ الحلقة</button></div>
           </form>` : '<div style="margin-top:10px"><button class="btn" id="gIn" type="button">الدخول بحساب Google</button></div>'}
@@ -260,7 +341,7 @@ function bindFamilyPanel(){
   const busy = (form, on) => form && $$('button, input', form).forEach(x => { x.disabled = on; });
   if ($('#copyJoin')) $('#copyJoin').onclick = () => {
     const f = Cloud.st.family;
-    const t = `انضمّ إلى حلقة ${f.name} لحفظ القرآن الكريم:\n${joinLink(f.joinCode)}\nرمز العائلة: ${f.joinCode}`;
+    const t = `انضمّ إلى حلقة ${f.name} لحفظ القرآن الكريم:\n${joinLink(f.joinCode)}\n${T('code')}: ${f.joinCode}`;
     navigator.clipboard.writeText(t).then(() => { $('#copyJoin').textContent = 'نُسخ ✓'; }).catch(() => prompt('انسخ الرسالة:', t));
   };
   $$('#signOut').forEach(b => b.onclick = async () => {
@@ -290,7 +371,7 @@ ${name}`);
   };
   if ($('#createForm')) $('#createForm').onsubmit = async e => {
     e.preventDefault(); busy(e.target, true);
-    try { await Cloud.createFamily($('#fname').value.trim(), $('#inv') ? $('#inv').value.trim().toUpperCase() : ''); route(); }
+    try { await Cloud.createFamily($('#fname').value.trim(), $('#inv') ? $('#inv').value.trim().toUpperCase() : '', $('input[name=fType]:checked').value); route(); }
     catch(x){ busy(e.target, false); err(x); }
   };
 }
@@ -304,7 +385,7 @@ function viewHome(pid){
   const edit = Cloud.canEdit(p), own = Cloud.mine(p);
   app.innerHTML = `
     <section class="who">${avatar(p)}<div><h1>${esc(p.name)}</h1><a href="#/" class="small">${own || !p.cloud ? 'تبديل الفرد' : 'رجوع إلى الحلقة'}</a></div></section>
-    ${edit ? (own || !p.cloud ? '' : '<p class="note">تدير هذا الملف بصفتك وليّ الأمر.</p>') : '<p class="note">تعرض ملف ' + esc(p.name) + ' للاطّلاع فقط.</p>'}
+    ${edit ? (own || !p.cloud ? '' : `<p class="note">تدير هذا الملف بصفتك ${T('guardian')}.</p>`) : '<p class="note">تعرض ملف ' + esc(p.name) + ' للاطّلاع فقط.</p>'}
     <div class="mini-stats" aria-label="المحفوظ">
       <span><b>${Q.dec(m.juz)}</b> جزء</span><span><b>${Q.dec(m.pages)}</b> وجه</span><span><b>${AR(m.ayat)}</b> آية</span><span><b>${Q.dec(m.pct)}٪</b> من القرآن</span>
     </div>
@@ -780,13 +861,13 @@ function viewListen(_, args){
 function listenLine(pid){
   const lis = Store.data(pid).lis || {}, w = Stats.weekStart(Store.today()); let n = 0, words = 0;
   Object.entries(lis).forEach(([k, v]) => { if (+k >= w){ n += v[0]; words += v[1]; } });
-  return n ? `<p class="small lisline">${ICON_EAR} سمّع لأهله هذا الأسبوع ${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')} (${count(words, 'كلمة واحدة', 'كلمتين', 'كلمات', 'كلمة')})</p>` : '';
+  return n ? `<p class="small lisline">${ICON_EAR} سمّع لـ${T('hisPeople')} هذا الأسبوع ${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')} (${count(words, 'كلمة واحدة', 'كلمتين', 'كلمات', 'كلمة')})</p>` : '';
 }
 
 /* ================= بطاقة مجلس الجمعة (يوم الجمعة فقط) ================= */
-const isFriday = () => (Store.today() + 5) % 7 === 6;
+const isFriday = () => (Store.today() + 5) % 7 === (isSchool() ? 5 : 6);   // الخميس آخر أيام الدراسة
 const majlisCard = () => Cloud.st.fid && isFriday() ? `<a class="panel majlis-card" href="#/majlis">
-  <span class="mc-ic">📺</span><span><b>اليوم الجمعة: وقت مجلس الجمعة</b><span class="small">اجمع أهلك واعرض أسبوعكم على التلفزيون.</span></span></a>` : '';
+  <span class="mc-ic">📺</span><span><b>اليوم ${isSchool() ? 'الخميس' : 'الجمعة'}: وقت ${T('majlis')}</b><span class="small">${isSchool() ? 'اجمع طلابك واعرض أسبوعهم على شاشة الفصل.' : 'اجمع أهلك واعرض أسبوعكم على التلفزيون.'}</span></span></a>` : '';
 
 /* ================= الخزّان العائلي ================= */
 function familyTank(){
@@ -829,7 +910,7 @@ function tankCard(){
           ${t.full ? `<p class="tank-full">امتلأ الخزّان! ${fam.reward ? 'استحققتم المكافأة 🎉' : 'بارك الله فيكم 🎉'}</p>`
             : t.cap ? `<p class="small" style="margin:0">يمتلئ حين يحقّق كل فرد هدفه هذا الأسبوع.</p>`
             : '<p class="small" style="margin:0">يبدأ بالامتلاء حين يضع أفراد الحلقة أهدافهم.</p>'}
-          <ul class="tank-legend">${t.parts.map(x => `<li><i style="background:${x.p.color}"></i><span>${esc(x.p.name)}</span>
+          <ul class="tank-legend">${(seesOthers() ? t.parts : t.parts.filter(x => Cloud.mine(x.p))).map(x => `<li><i style="background:${x.p.color}"></i><span>${esc(x.p.name)}</span>
             <b>${x.hasGoal ? AR(Math.round(x.base)) + '٪' : '—'}${x.bonus ? ` <small>+${AR(x.bonus)}٪ تسميع لغيره</small>` : ''}</b></li>`).join('')}</ul>
         </div>
       </div>
@@ -916,7 +997,7 @@ function viewMajlis(){
       // ١) الافتتاح
       `<div class="mj-cover">
         <div class="mj-basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>
-        <h1>مجلس الجمعة</h1>
+        <h1>${T('majlis')}</h1>
         <p class="mj-fam">حلقة ${esc(fam.name)}</p>
         <p class="mj-date">${mjWeek ? 'الأسبوع الماضي' : 'هذا الأسبوع'}: ${fmt(w)} – ${fmt(w + 6)} · ${hij(w + 6)}</p>
       </div>`,
@@ -1184,6 +1265,10 @@ function viewInviteLanding(inv){
         <p class="small" style="margin:0 0 8px">دخلت باسم ${esc(st.user.email || '')} · <button class="linkbtn" id="invOut" type="button">حساب آخر</button></p>
         <label for="invName">اسم العائلة</label>
         <input type="text" id="invName" maxlength="30" required placeholder="مثل: آل فلان">
+        <div class="row" style="margin-top:10px">
+          <label class="chk"><input type="radio" name="invType" value="family" checked> حلقة عائلة</label>
+          <label class="chk"><input type="radio" name="invType" value="school"> حلقة مدرسية (معلّم وطلاب)</label>
+        </div>
         <div style="margin-top:12px"><button class="btn primary big" type="submit">أنشئ الحلقة</button></div>
       </form>`
       : '<button class="btn primary big" id="invG" type="button">الدخول بحساب Google</button>'}
@@ -1194,7 +1279,7 @@ function viewInviteLanding(inv){
   if ($('#invOut')) $('#invOut').onclick = async () => { await Cloud.signOut(); Cloud.googleSignIn().catch(err); };
   if ($('#invForm')) $('#invForm').onsubmit = async e => {
     e.preventDefault(); const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
-    try { await Cloud.createFamily($('#invName').value.trim(), inv.toUpperCase()); clearQuery(); route(); }
+    try { await Cloud.createFamily($('#invName').value.trim(), inv.toUpperCase(), $('input[name=invType]:checked').value); clearQuery(); route(); }
     catch(x){ btn.disabled = false; err(x); }
   };
 }

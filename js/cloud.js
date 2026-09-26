@@ -26,7 +26,7 @@ const Cloud = (() => {
   const FV = () => firebase.firestore.FieldValue;
 
   let auth = null, db = null, user = null, unsubMembers = null, unsubReq = null, unsubFam = null;
-  const st = {ok: false, user: null, fid: null, family: null, error: null, requests: []};
+  const st = {ok: false, user: null, fid: null, family: null, error: null, requests: [], circles: []};
   const subs = new Set();
   const emit = () => subs.forEach(f => { try { f(st); } catch(e){} });
 
@@ -53,10 +53,17 @@ const Cloud = (() => {
   /* ---------- ربط الجهاز بعائلته ---------- */
   async function attach(){
     const us = await db.doc(`users/${user.uid}`).get();
-    if (!us.exists){ st.fid = null; st.family = null; return; }
-    const fid = us.data().fid;
-    const fam = await db.doc(`families/${fid}`).get().catch(() => null);
-    if (!fam || !fam.exists){ cleanupDeleted(); return; }
+    if (!us.exists){ st.fid = null; st.family = null; st.circles = []; return; }
+    // حلقات هذا الحساب (عائلة وفصل مثلًا)، والحالية منها
+    const ud = us.data(), fids = [...new Set([...(ud.fids || []), ud.fid].filter(Boolean))];
+    const fams = (await Promise.all(fids.map(x => db.doc(`families/${x}`).get().catch(() => null)))).filter(s => s && s.exists);
+    st.circles = fams.map(s => ({id: s.id, name: s.data().name, type: s.data().type || 'family'}));
+    const gone = fids.filter(x => !fams.some(s => s.id === x));
+    if (gone.length) db.doc(`users/${user.uid}`).set({fids: firebase.firestore.FieldValue.arrayRemove(...gone)}, {merge: true}).catch(() => {});
+    const fid = fams.some(s => s.id === ud.fid) ? ud.fid : (fams[0] && fams[0].id);
+    if (!fid){ cleanupDeleted(); return; }
+    if (fid !== ud.fid) await db.doc(`users/${user.uid}`).set({fid}, {merge: true});
+    const fam = fams.find(s => s.id === fid);
     st.fid = fid; st.family = {id: fid, ...fam.data()};
     // المكافأة وغيرها قد يغيّرها وليّ الأمر من جهازه
     if (unsubFam) unsubFam();
@@ -107,11 +114,28 @@ const Cloud = (() => {
   // التسميع الصوتي باسم الفرد: لصاحبه، أو لوليّ الأمر إن كان الفرد بلا جوال (غير مربوط بجهاز)
   const canRecite = p => !!(p && (mine(p) || (p.cloud && isOwner() && Array.isArray(p.uids) && !p.uids.length)));
   // الحلقة لم تعد موجودة (حذفها وليّ أمرها): يُمسح ما يخصّها من هذا الجهاز
-  function cleanupDeleted(){
+  function clearCircleLocal(){
     Store.profiles().filter(p => p.cloud).map(p => p.id).forEach(id => Store.removeProfile(id));
-    Store.DB.fid = null; Store.save();
-    if (user) db.doc(`users/${user.uid}`).delete().catch(() => {});
+    Store.DB.fid = null; Store.DB.cur = null; Store.save();
+  }
+  function cleanupDeleted(){
+    const dead = st.fid;
+    clearCircleLocal();
     st.fid = null; st.family = null;
+    const rest = (st.circles || []).filter(c => c.id !== dead);
+    st.circles = rest;
+    if (!user) return;
+    if (rest.length){
+      db.doc(`users/${user.uid}`).set({fid: rest[0].id, fids: firebase.firestore.FieldValue.arrayRemove(dead || '')}, {merge: true})
+        .then(() => attach()).then(emit).catch(() => {});
+    } else db.doc(`users/${user.uid}`).delete().catch(() => {});
+  }
+  // التبديل بين حلقات الحساب
+  async function switchCircle(fid){
+    if (fid === st.fid) return;
+    detach(); clearCircleLocal();
+    await db.doc(`users/${user.uid}`).set({fid}, {merge: true});
+    await attach(); emit();
   }
   function detach(){
     if (unsubMembers){ unsubMembers(); unsubMembers = null; }
@@ -392,14 +416,14 @@ const Cloud = (() => {
   }
 
   /* ---------- إنشاء حلقة عائلة (بدعوة، أو مباشرةً للمدير) ---------- */
-  async function createFamily(name, inviteCode){
+  async function createFamily(name, inviteCode, type = 'family'){
     if (!user || user.isAnonymous) throw new Error('need-google');
     const admin = isAdminUser(user);
     const fref = db.collection('families').doc(), fid = fref.id;
     let jc = code(6);
     while ((await db.doc(`joinCodes/${jc}`).get()).exists) jc = code(6);
     const b = db.batch();
-    const fam = {name, owner: user.uid, joinCode: jc, created: Date.now()};
+    const fam = {name, type: type === 'school' ? 'school' : 'family', owner: user.uid, joinCode: jc, created: Date.now()};
     if (!admin || inviteCode){
       const inv = await db.doc(`invites/${inviteCode}`).get();
       if (!inv.exists) throw new Error('invite-missing');
@@ -411,8 +435,9 @@ const Cloud = (() => {
     b.set(db.doc(`families/${fid}/access/${user.uid}`), {role: 'owner', at: Date.now()});
     b.set(db.doc(`joinCodes/${jc}`), {fid, name});
     b.set(db.doc(`fstat/${fid}`), {created: fam.created});
-    b.set(db.doc(`users/${user.uid}`), {fid});
+    b.set(db.doc(`users/${user.uid}`), {fid, fids: firebase.firestore.FieldValue.arrayUnion(fid)}, {merge: true});
     await b.commit();
+    if (st.fid){ detach(); clearCircleLocal(); }
     await attach(); emit();
   }
 
@@ -424,14 +449,15 @@ const Cloud = (() => {
     if (!j.exists) throw new Error('code-missing');
     const fid = j.data().fid;
     await db.doc(`families/${fid}/access/${auth.currentUser.uid}`).set({role: 'member', code: jc, at: Date.now()});
-    await db.doc(`users/${auth.currentUser.uid}`).set({fid});
+    await db.doc(`users/${auth.currentUser.uid}`).set({fid, fids: firebase.firestore.FieldValue.arrayUnion(fid)}, {merge: true});
     user = auth.currentUser;
+    if (st.fid && st.fid !== fid){ detach(); clearCircleLocal(); }
     await attach(); emit();
   }
 
   return {
     init, st, subscribe: f => { subs.add(f); return () => subs.delete(f); },
-    deleteFamily, restoreFamily, requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
+    switchCircle, deleteFamily, restoreFamily, requestRelink, approveRelink, linkGoogle, peekJoinCode, setReward, sendRequest, setStatus, submitResult, makeResult, onPeerDone: null,
     googleSignIn, signOut, removeMember, claimMember, releaseMember, mine, canEdit, canRecite, isOwner, createFamily, joinFamily, loadSessions,
     get db(){ return db; }, get auth(){ return auth; }, ADMIN_EMAIL, code, isAdminUser
   };
