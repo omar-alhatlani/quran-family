@@ -42,6 +42,7 @@ function route(keepScroll){
   const pid = Store.cur;
   if (parts[0] === 'listen') return viewListen(pid, parts.slice(1));
   if (parts[0] === 'majlis') return viewMajlis();
+  if (parts[0] === 'play' && parts[1] === 'wird' && pid) return viewPlayWird(pid);
   if (!parts.length || !pid) return viewProfiles();
   ({home: viewHome, map: viewMap, tasmee: viewTasmee, report: viewReport, goal: viewGoal, ask: viewAsk, play: viewPlay, start: viewStart, mut: viewMut, cert: viewCert, drill: viewDrill}[parts[0]] || viewProfiles)(pid, parts.slice(1).map(Number));
   window.scrollTo(0, keepScroll === true ? y : 0);
@@ -535,11 +536,13 @@ function wirdCard(pid, edit, sg, mode){
         <div class="row between"><h2>ورد المراجعة اليوم</h2><span class="chip">${unitTxt(ws.total, 'page', true)}</span></div>
         <ol class="wlist">${ws.items.map(x => `<li class="${x.done ? 'done' : ''}">
           ${mode ? `<a href="${segHref(pid, mode, x.a, x.b)}">${itemLabel(x.a, x.b)}</a>` : `<span>${itemLabel(x.a, x.b)}</span>`}
+          <a class="wplay" href="#/play/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}" aria-label="استمع إلى ${itemLabel(x.a, x.b)}">🎧</a>
           <span class="wk" aria-label="${x.done ? 'تمّ' : 'لم يتمّ'}">${x.done ? '✓' : ''}</span>${x.wait ? '<span class="wwait">⏳ أُرسلت، تُسجَّل حين يفتح برنامجه</span>' : ''}</li>`).join('')}</ol>
         <div class="gl"><span>التقدّم</span><b>${Q.dec(ws.done)} من ${unitTxt(ws.total, 'page')}</b></div>
         <div class="qbar ${ws.complete ? 'okb' : ''}"><i style="width:${pct(ws.done, ws.total)}%"></i></div>
         ${ws.complete ? '<p class="metmsg">أتممت ورد اليوم، بارك الله فيك.</p>' + extra
-          : mode === 'self' ? `<p style="margin:10px 0 0"><a class="btn primary" href="${tasmeeHref(ws.next.a, ws.next.b)}">${ICON.mic} ${ws.done ? 'تابع الورد' : 'ابدأ الورد'}</a></p>`
+          : mode === 'self' ? `<p class="row" style="margin:10px 0 0"><a class="btn primary" href="${tasmeeHref(ws.next.a, ws.next.b)}">${ICON.mic} ${ws.done ? 'تابع الورد' : 'ابدأ الورد'}</a>
+             <a class="btn" href="#/play/wird">${ICON_PLAY} استمع للورد</a></p>`
           : mode === 'listen' ? `<p style="margin:10px 0 0"><a class="btn primary" href="${listenHref(pid, ws.next.a, ws.next.b)}">${ICON_EAR} سمّع له وِرده</a></p>
              <p class="small" style="margin:6px 0 0">اضغط أي مقطع لتسمّعه له؛ يقرأ هو وتعلّم أنت أخطاءه.</p>` : ''}
       </section>`;
@@ -1060,54 +1063,69 @@ function viewPlay(pid, [s, a, b]){
   const sur = Q.surahs[Math.min(Math.max(s || 67, 1), 114) - 1];
   a = Math.min(Math.max(a || 1, 1), sur.count); b = Math.min(Math.max(b || a, a), sur.count);
   const A = sur.start + a - 1, B = sur.start + b - 1;
-  setTop('استمع: ' + sur.name, '#/home');
-  let rec = Store.pref('reciter', RECITERS[0][0]), rep = Store.pref('repeat', 3);
-  const withBas = a === 1 && sur.n !== 1 && sur.n !== 9;
+  viewPlayList(pid, [[A, B]], 'استمع: ' + sur.name, 'hifz');
+}
+// ورد المراجعة كاملًا (قد يمتدّ على سور عدّة)
+function viewPlayWird(pid){
+  const w = Stats.wird(pid, false);
+  if (!w || !w.items.length) return location.replace('#/home');
+  viewPlayList(pid, w.items, 'استمع للورد', 'rev');
+}
+/* مشغّل التلاوة: مقاطع متتالية، كل آية تُكرَّر عددًا يُختار (للحفظ ٣ افتراضًا، وللمراجعة مرة)، والآية الحالية مظلَّلة */
+function viewPlayList(pid, ranges, title, kind){
+  setTop(title, '#/home');
+  const repKey = kind === 'rev' ? 'repeatRev' : 'repeat';
+  let rec = Store.pref('reciter', RECITERS[0][0]), rep = Store.pref(repKey, kind === 'rev' ? 1 : 3);
+  const withBas = A => Q.num[A] === 1 && Q.sur[A] !== 1 && Q.sur[A] !== 9;
+  const canR = Cloud.canRecite(Store.profile(pid));
+  const recHref = kind === 'rev' ? (() => { const w = Stats.wird(pid, false), ws = w && Stats.wirdStatus(pid, w); return ws && ws.next ? tasmeeHref(ws.next.a, ws.next.b) : ''; })()
+    : tasmeeHref(ranges[0][0], ranges[0][1]);
   app.innerHTML = `
     <section class="panel">
-      <h2>${itemLabel(A, B)}</h2>
+      <h2>${ranges.length === 1 ? itemLabel(ranges[0][0], ranges[0][1]) : `ورد المراجعة: ${count(ranges.length, 'مقطع واحد', 'مقطعان', 'مقاطع', 'مقطعًا')}`}</h2>
       <div class="row" style="margin-top:10px">
         <label for="pr">القارئ</label><select id="pr">${RECITERS.map(([k, n]) => `<option value="${k}" ${k === rec ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <label for="pp">تكرار كل آية</label><select id="pp">${[1, 3, 5, 10].map(n => `<option value="${n}" ${n === rep ? 'selected' : ''}>${count(n, 'مرة واحدة', 'مرتين', 'مرات', 'مرة')}</option>`).join('')}</select>
       </div>
     </section>
-    <section class="mushaf">
-      <div class="sura-head">سُورَةُ ${sur.name}</div>
-      ${withBas ? '<div class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>' : ''}
+    ${ranges.map(([A, B]) => `<section class="mushaf">
+      <div class="sura-head">سُورَةُ ${Q.surahOf(A).name}</div>
+      ${withBas(A) ? '<div class="basmala">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</div>' : ''}
       <div class="text play-text">${Array.from({length: B - A + 1}, (_, k) => `<span class="pa" data-i="${A + k}">${Q.uth[A + k].split('\t').join(' ')} <span class="num">﴿${AR(Q.num[A + k])}﴾</span></span>`).join(' ')}</div>
-    </section>
+    </section>`).join('')}
     <div class="bar"><div class="wrap">
       <button class="mic" id="pl" type="button" aria-label="تشغيل">${ICON_PLAY}</button>
       <div class="prog"><div class="t" id="pt">اضغط للاستماع</div><div class="track"><i id="pi"></i></div></div>
-      ${Cloud.canRecite(Store.profile(pid)) ? `<a class="btn" href="${tasmeeHref(A, B)}">سمّع حفظك</a>` : ''}
+      ${canR && recHref ? `<a class="btn" href="${recHref}">${kind === 'rev' ? 'سمّع الورد' : 'سمّع حفظك'}</a>` : ''}
     </div></div>`;
   document.body.classList.add('has-bar');
   const audio = new Audio(); audio.preload = 'auto';
-  // قائمة التشغيل: [البسملة]، ثم كل آية مكرّرةً
+  // قائمة التشغيل: لكل مقطع [البسملة]، ثم كل آية مكرّرةً
   let list = [], pos = 0, playing = false;
   const build = () => {
     list = [];
-    if (withBas) list.push({i: -1, url: `https://everyayah.com/data/${rec}/001001.mp3`});
-    for (let i = A; i <= B; i++) for (let k = 0; k < rep; k++) list.push({i, k, url: `https://everyayah.com/data/${rec}/${pad3(sur.n)}${pad3(Q.num[i])}.mp3`});
+    ranges.forEach(([A, B]) => {
+      if (withBas(A)) list.push({i: -1, url: `https://everyayah.com/data/${rec}/001001.mp3`});
+      for (let i = A; i <= B; i++) for (let k = 0; k < rep; k++) list.push({i, k, url: `https://everyayah.com/data/${rec}/${pad3(Q.sur[i])}${pad3(Q.num[i])}.mp3`});
+    });
   };
   const mark = () => {
     const cur = list[pos];
     $$('.pa').forEach(el => el.classList.toggle('on', cur && +el.dataset.i === cur.i));
     const on = $('.pa.on'); if (on){ const r = on.getBoundingClientRect(); if (r.bottom > innerHeight - 130 || r.top < 60) on.scrollIntoView({block: 'center', behavior: 'smooth'}); }
     $('#pi').style.width = (list.length ? pos / list.length * 100 : 0) + '%';
-    $('#pt').textContent = !cur ? 'انتهى' : cur.i < 0 ? 'البسملة' : `الآية ${AR(Q.num[cur.i])} · التكرار ${AR(cur.k + 1)} من ${AR(rep)}`;
+    $('#pt').textContent = !cur ? 'انتهى' : cur.i < 0 ? 'البسملة' : `${Q.surahOf(cur.i).name} · الآية ${AR(Q.num[cur.i])}${rep > 1 ? ` · التكرار ${AR(cur.k + 1)} من ${AR(rep)}` : ''}`;
     $('#pl').classList.toggle('on', playing);
   };
   const playAt = p => {
-    pos = p; if (pos >= list.length){ playing = false; pos = 0; mark(); $('#pt').textContent = 'انتهى. أعد الاستماع أو سمّع حفظك.'; return; }
+    pos = p; if (pos >= list.length){ playing = false; pos = 0; mark(); $('#pt').textContent = kind === 'rev' ? 'انتهى الورد. سمّعه الآن وهو حاضر في ذهنك.' : 'انتهى. أعد الاستماع أو سمّع حفظك.'; return; }
     audio.src = list[pos].url; audio.play().then(() => { playing = true; mark(); }).catch(() => { playing = false; mark(); $('#pt').textContent = 'تعذّر التشغيل. تأكّد من الاتصال.'; });
   };
   audio.onended = () => playAt(pos + 1);
   build();
   $('#pl').onclick = () => { if (playing){ audio.pause(); playing = false; mark(); } else if (audio.src && audio.currentTime > 0 && !audio.ended){ audio.play(); playing = true; mark(); } else playAt(pos); };
   $('#pr').onchange = e => { rec = e.target.value; Store.setPref('reciter', rec); const was = playing; audio.pause(); build(); pos = 0; if (was) playAt(0); else mark(); };
-  $('#pp').onchange = e => { rep = +e.target.value; Store.setPref('repeat', rep); const cur = list[pos]; build(); pos = Math.max(0, list.findIndex(x => cur && x.i === cur.i)); mark(); };
-  // اضغط آيةً لتبدأ منها
+  $('#pp').onchange = e => { rep = +e.target.value; Store.setPref(repKey, rep); const cur = list[pos]; build(); pos = Math.max(0, list.findIndex(x => cur && x.i === cur.i)); mark(); };
   $$('.pa').forEach(el => el.onclick = () => { const p = list.findIndex(x => x.i === +el.dataset.i); if (p >= 0) playAt(p); });
   mark();
   cleanup = () => { audio.pause(); audio.src = ''; };

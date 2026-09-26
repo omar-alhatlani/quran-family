@@ -409,3 +409,4 @@ body.stage .foot{display:none}
 .drill-list li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 .drill-list .q{font-family:var(--q);font-size:22px;line-height:2.1;margin:4px 0 0}
 .drill-list mark{background:var(--hint-bg);color:var(--hint);border-radius:4px;padding:0 3px;box-shadow:0 0 0 1px var(--gold)}
+.wplay{text-decoration:none;margin-inline-start:6px;font-size:15px}
