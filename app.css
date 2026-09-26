@@ -432,3 +432,4 @@ body.stage .foot{display:none}
 .hw-one .hw-s{color:var(--hint)}
 .hw-late{color:var(--wrong)} .hw-today{color:var(--hint)}
 .hw-add{margin-top:10px}
+.hw-edit{border-color:var(--accent)!important}
