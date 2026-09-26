@@ -236,7 +236,7 @@ const Cloud = (() => {
   function memberDoc(id){
     const p = Store.profile(id), d = Store.data(id);
     return {name: p.name, color: p.color, uids: p.uids || [], mem: encodeMem(d.mem), rev: d.rev, mis: d.mis, up: d.up || Date.now(),
-            goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}, wkp: weekHist(p, d), hifz: d.hifz || null, mapLock: d.mapLock || null, certs: d.certs || {}};
+            goal: d.goal || null, nl: d.nl || {}, prog: progFor(p, d), wird: d.wird || null, lis: d.lis || {}, wkp: weekHist(p, d), hifz: d.hifz || null, mapLock: d.mapLock || null, certs: d.certs || {}, hw: d.hw || []};
   }
 
   /* ---------- الحلقة المدرسية: قائمة الأسماء والأنصبة ---------- */

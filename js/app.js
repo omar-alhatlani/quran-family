@@ -227,12 +227,12 @@ function overviewTable(){
     else if (!d.goal || !d.goal.n) hifz = '<span class="muted">بلا هدف</span>';
     const last = Math.max(-1, ...Object.values(d.rev || {}).map(r => r[0]));
     const lastTxt = last < 0 ? '—' : t - last <= 0 ? 'اليوم' : t - last === 1 ? 'أمس' : `قبل ${AR(t - last)} ${t - last <= 10 ? 'أيام' : 'يومًا'}`;
-    return `<tr data-id="${p.id}"><td>${avatar(p, 'sm')} ${esc(p.name)}</td><td>${Q.dec(m.pages)}</td><td>${c.hasGoal ? AR(Math.round(c.base)) + '٪' : '—'}</td><td>${wird}</td><td>${hifz}</td><td>${lastTxt}</td></tr>`;
+    return `<tr data-id="${p.id}"><td>${avatar(p, 'sm')} ${esc(p.name)}</td><td>${Q.dec(m.pages)}</td><td>${c.hasGoal ? AR(Math.round(c.base)) + '٪' : '—'}</td><td>${wird}</td><td>${hifz}</td><td>${hwBrief(p.id)}</td><td>${lastTxt}</td></tr>`;
   }).join('');
   return `<section class="panel ov">
     <h2>متابعة الحلقة</h2>
     <div class="ov-wrap"><table>
-      <thead><tr><th>${isSchool() ? 'الطالب' : 'الفرد'}</th><th>المحفوظ (وجه)</th><th>هدف الأسبوع</th><th>ورد اليوم</th><th>حفظ اليوم</th><th>آخر تسميع</th></tr></thead>
+      <thead><tr><th>${isSchool() ? 'الطالب' : 'الفرد'}</th><th>المحفوظ (وجه)</th><th>هدف الأسبوع</th><th>ورد اليوم</th><th>حفظ اليوم</th><th>واجب المدرسة</th><th>آخر تسميع</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
     <p class="small" style="margin:6px 0 0">اضغط الاسم لفتح ملفّه.</p>
   </section>`;
@@ -393,6 +393,7 @@ function viewHome(pid){
     ${own ? peerBanner() : ''}
     ${own ? majlisCard() : ''}
     ${m.words ? certCard(pid, Cloud.canEdit(p)) : ''}
+    ${hwCard(pid)}
     ${!m.words ? (edit ? `
       <section class="panel today">
         <h2>لنبدأ</h2>
@@ -416,7 +417,7 @@ function viewHome(pid){
     ${!p.cloud || isOwner() ? `<p class="row" style="justify-content:center;margin-top:24px">
       ${p.cloud && !own && Array.isArray(p.uids) && p.uids.length ? '<button class="btn small" id="rel" type="button">السماح بربطه بجهاز جديد</button>' : ''}
       <button class="btn small danger" id="del" type="button">حذف ملف ${esc(p.name)}</button></p>` : ''}`;
-  bindPeerBanner(); bindHifz(pid);
+  bindPeerBanner(); bindHifz(pid); bindHw(pid);
   if ($('#rel')) $('#rel').onclick = async () => {
     if (!confirm(`سيُفكّ ربط ${p.name} بجهازه الحالي، ثم يختار «أنا ${p.name}» من جواله الجديد. متابعة؟`)) return;
     try { await Cloud.releaseMember(pid); viewHome(pid); } catch(e){ alert('تعذّر ذلك. تأكّد من الاتصال.'); }
@@ -673,6 +674,7 @@ function applyPeer(r){
   rec.pct = graded ? Math.round(rec.ok / graded * 100) : 0;
   rec.kind = Object.keys(per).every(i => mem[i]) ? 'review' : 'new';
   Store.addSession(pid, rec);
+  hwCheck(pid, rec);
   // حفظ جديد أتقنه أمام أحد أهله: يُضاف إلى محفوظه
   if (rec.kind === 'new' && rec.pct >= 90) Object.keys(per).map(Number).filter(i => !mem[i]).forEach(i => Store.setMem(pid, i, i, true));
   Store.touch(pid); Store.hooks.session(pid, rec, true);
@@ -1571,6 +1573,103 @@ function drillNext(pid, A, B){
   return res;
 }
 
+/* ================= واجب الحفظ المدرسي =================
+   hw: [{id, a, b, due (يوم|null), created, passes: [أيام التسميع الناجح], done (يوم الإتقان), school (يوم التسميع في المدرسة)}]
+   الإتقان: تسميعان ناجحان (٩٠٪ فأكثر) للمقطع كاملًا في يومين مختلفين. */
+const HW_PASS = 90, HW_DAYS = 2;
+const dowName = d => ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'][(d + 4) % 7];
+// بعد كل جلسة (صوتية أو بتسميع أحد الأهل): هل غطّت واجبًا مفتوحًا بنجاح؟
+function hwCheck(pid, rec){
+  const d = Store.data(pid); if (!d.hw || !d.hw.length || rec.pct < HW_PASS) return;
+  const day = Store.dayOf(rec.t); let changed = false;
+  d.hw.forEach(x => {
+    if (x.school || rec.a > x.a || rec.b < x.b) return;
+    x.passes = [...new Set([...(x.passes || []), day])];
+    if (!x.done && x.passes.length >= HW_DAYS) x.done = day;
+    changed = true;
+    // حفظ جديد أتقنه: يُضاف إلى محفوظه (فيُحسب في هدفه وفي الخزّان)
+    const m = Store.mem(pid); for (let i = x.a; i <= x.b; i++) if (!m[i]){ Store.setMem(pid, x.a, x.b, true); break; }
+  });
+  if (changed) Store.touch(pid);
+}
+function hwStatus(x){
+  const t = Store.today(), n = (x.passes || []).length;
+  if (x.school) return {k: 'school', txt: '✓ سُمّع في المدرسة'};
+  if (x.done) return {k: 'done', txt: '✓ أتقنه، جاهز للمدرسة'};
+  if (n === 1) return {k: 'one', txt: x.passes[0] === t ? 'تسميع ناجح واحد، سمّعه غدًا مرة أخرى ليثبت' : 'تسميع ناجح واحد، سمّعه اليوم ليثبت'};
+  return {k: 'none', txt: 'لم يُسمَّع بعد'};
+}
+const hwOpen = d => (d.hw || []).filter(x => !x.school && !(x.done && x.due !== null && x.due !== undefined && Store.today() > x.due + 7));
+function hwDue(x){
+  if (x.due === null || x.due === undefined) return '';
+  const left = x.due - Store.today();
+  return left < 0 ? `<span class="hw-late">فات موعده (${dowName(x.due)})</span>` : left === 0 ? '<b class="hw-today">التسميع اليوم</b>'
+    : left === 1 ? `التسميع غدًا (${dowName(x.due)})` : `التسميع يوم ${dowName(x.due)} · باقي ${count(left, 'يوم', 'يومان', 'أيام', 'يومًا')}`;
+}
+// بطاقة الواجب في صفحة الابن (ولوليّ الأمر: إضافة وإغلاق وحذف)
+function hwCard(pid){
+  const p = Store.profile(pid), d = Store.data(pid), open = hwOpen(d);
+  // من يضيف الواجب: وليّ الأمر لملف غيره، أو الجهاز نفسه إن لم يكن في حلقة
+  const guard = p.cloud ? isOwner() && !Cloud.mine(p) : true, rmode = reciteMode(pid);
+  if (!open.length && !guard) return '';
+  return `<section class="panel hw">
+    <div class="row between"><h2>📚 واجب المدرسة</h2>${open.length ? `<span class="chip">${count(open.length, 'واجب واحد', 'واجبان', 'واجبات', 'واجبًا')}</span>` : ''}</div>
+    ${open.length ? `<ul class="hw-list">${open.map(x => { const s = hwStatus(x); return `<li class="hw-${s.k}">
+      <div class="hw-t"><b>${itemLabel(x.a, x.b)}</b>${hwDue(x) ? `<span class="small">${hwDue(x)}</span>` : ''}</div>
+      <div class="hw-s">${s.txt}${(x.passes || []).length === 1 && !x.done ? ' <span class="small">(١ من ٢)</span>' : ''}</div>
+      <div class="hz-acts">
+        <a class="btn small" href="#/play/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_PLAY} استمع</a>
+        ${rmode ? `<a class="btn small ${x.done ? '' : 'primary'}" href="${segHref(pid, rmode, x.a, x.b)}">${rmode === 'self' ? ICON.mic + ' سمّع للبرنامج' : ICON_EAR + ' سمّع له'}</a>` : ''}
+        ${rmode === 'self' && p.cloud ? `<a class="btn small" href="#/ask/${Q.sur[x.a]}/${Q.num[x.a]}/${Q.num[x.b]}">${ICON_EAR} اطلب تسميعًا</a>` : ''}
+        ${guard ? `<button class="btn small" type="button" data-hwschool="${x.id}">سُمّع في المدرسة ✓</button>
+          <button class="btn small danger" type="button" data-hwdel="${x.id}">حذف</button>` : ''}
+      </div></li>`; }).join('')}</ul>` : '<p class="small">لا واجب الآن.</p>'}
+    ${guard ? `<details class="hw-add"${open.length ? '' : ' open'}><summary class="small">إضافة واجب مدرسي</summary>
+      <div class="row" style="margin-top:8px">
+        <label for="hwS">السورة</label><select id="hwS">${Q.surahs.map(s => `<option value="${s.n}" ${s.n === 67 ? 'selected' : ''}>${AR(s.n)}. ${s.name}</option>`).join('')}</select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label for="hwA">من آية</label><select id="hwA"></select>
+        <label for="hwB">إلى آية</label><select id="hwB"></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label for="hwD">موعد التسميع في المدرسة (اختياري)</label><input type="date" id="hwD" min="${new Date(Store.today() * 864e5).toISOString().slice(0, 10)}">
+      </div>
+      <p class="small" style="margin:6px 0">يظهر الواجب في صفحته، ويُعدّ مُتقَنًا بعد تسميعين ناجحين في يومين مختلفين.</p>
+      <button class="btn primary small" id="hwAdd" type="button">أضف الواجب</button>
+    </details>` : ''}
+  </section>`;
+}
+function bindHw(pid){
+  const d = Store.data(pid);
+  const fill = () => {
+    const s = Q.surahs[+$('#hwS').value - 1], o = n => Array.from({length: n}, (_, k) => `<option value="${k + 1}">${AR(k + 1)}</option>`).join('');
+    $('#hwA').innerHTML = o(s.count); $('#hwB').innerHTML = o(s.count); $('#hwB').value = s.count;
+  };
+  if ($('#hwS')){ fill(); $('#hwS').onchange = fill; }
+  if ($('#hwAdd')) $('#hwAdd').onclick = () => {
+    const s = +$('#hwS').value; let a = +$('#hwA').value, b = +$('#hwB').value; if (a > b) [a, b] = [b, a];
+    const due = $('#hwD').value ? Math.floor(Date.parse($('#hwD').value) / 864e5) : null;
+    (d.hw = d.hw || []).push({id: Store.uid(), a: Q.idx(s, a), b: Q.idx(s, b), due, created: Store.today(), passes: []});
+    Store.touch(pid); route(true);
+  };
+  $$('[data-hwschool]').forEach(b => b.onclick = () => {
+    const x = (d.hw || []).find(y => y.id === b.dataset.hwschool); if (!x) return;
+    if (!x.done && !confirm('لم يُتقنه بعد في البرنامج. هل سُمّع في المدرسة فعلًا؟')) return;
+    x.school = Store.today(); Store.touch(pid); route(true);
+  });
+  $$('[data-hwdel]').forEach(b => b.onclick = () => {
+    if (!confirm('حذف هذا الواجب؟')) return;
+    d.hw = (d.hw || []).filter(y => y.id !== b.dataset.hwdel); Store.touch(pid); route(true);
+  });
+}
+// عمود «واجب المدرسة» في متابعة الحلقة
+function hwBrief(pid){
+  const open = hwOpen(Store.data(pid)); if (!open.length) return '—';
+  const x = open.slice().sort((p, q) => (p.due ?? 1e9) - (q.due ?? 1e9))[0], s = hwStatus(x);
+  return s.k === 'done' ? '<b class="ok">✓ أتقنه</b>' : s.k === 'one' ? '<span class="part">١ من ٢</span>' : '<span class="no">لم يبدأ</span>';
+}
+
 /* ================= الخريطة ================= */
 let mapMode = 'mem', mapSel = 0, openSurah = 0;
 // الخريطة مفتوحة للرسم الأول، ثم تُقفل: بزرّ «أنهيت رسم خريطتي» أو تلقائيًّا بوضع أول هدف.
@@ -1907,7 +2006,7 @@ function applySession(pid, A, B, W, prev){
   const graded = rec.ok + rec.wrong + rec.skip + rec.hint;
   rec.pct = graded ? Math.round(rec.ok / graded * 100) : 0;
   rec.kind = reached.length && reached.every(i => mem[i]) ? 'review' : 'new';
-  if (!prev) Store.addSession(pid, rec);
+  if (!prev){ Store.addSession(pid, rec); hwCheck(pid, rec); }
   Store.touch(pid);
   Store.hooks.session(pid, rec, !prev);
   return {rec, misDelta, revPrev, reached};

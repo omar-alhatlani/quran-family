@@ -421,3 +421,14 @@ body.stage .foot{display:none}
 .ov td .av.sm{display:inline-grid;vertical-align:middle;margin-inline-end:4px}
 .ov .ok{color:var(--fresh)} .ov .part{color:var(--hint)} .ov .no{color:var(--muted)}
 .circles{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+
+/* واجب الحفظ المدرسي */
+.hw{border-color:#2f6fb3;background:color-mix(in srgb,#2f6fb3 7%,var(--surface))}
+.hw-list{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:10px}
+.hw-list li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.hw-t{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.hw-s{font-size:14px;margin-top:4px}
+.hw-done .hw-s,.hw-school .hw-s{color:var(--fresh);font-weight:600}
+.hw-one .hw-s{color:var(--hint)}
+.hw-late{color:var(--wrong)} .hw-today{color:var(--hint)}
+.hw-add{margin-top:10px}
